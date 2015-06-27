@@ -10,9 +10,11 @@
 #define USE(WTF_FEATURE) (defined WTF_USE_##WTF_FEATURE  && WTF_USE_##WTF_FEATURE)  // NOLINT
 #define ENABLE(WTF_FEATURE) (defined ENABLE_##WTF_FEATURE  && ENABLE_##WTF_FEATURE)  // NOLINT
 
+#include "atom/common/native_mate_converters/gfx_converter.h"
 #include "atom/common/native_mate_converters/string16_converter.h"
 #include "atom/renderer/api/atom_api_spell_check_client.h"
 #include "content/public/renderer/render_frame.h"
+#include "native_mate/callback.h"
 #include "native_mate/dictionary.h"
 #include "native_mate/object_template_builder.h"
 #include "third_party/WebKit/public/web/WebDocument.h"
@@ -27,7 +29,7 @@ namespace mate {
 template<>
 struct Converter<WTF::String> {
   static bool FromV8(v8::Isolate* isolate,
-                     v8::Handle<v8::Value> val,
+                     v8::Local<v8::Value> val,
                      WTF::String* out) {
     if (!val->IsString())
       return false;
@@ -72,10 +74,18 @@ double WebFrame::GetZoomFactor() const {
   return blink::WebView::zoomLevelToZoomFactor(GetZoomLevel());
 }
 
-v8::Handle<v8::Value> WebFrame::RegisterEmbedderCustomElement(
-    const base::string16& name, v8::Handle<v8::Object> options) {
+v8::Local<v8::Value> WebFrame::RegisterEmbedderCustomElement(
+    const base::string16& name, v8::Local<v8::Object> options) {
   blink::WebExceptionCode c = 0;
   return web_frame_->document().registerEmbedderCustomElement(name, options, c);
+}
+
+void WebFrame::RegisterElementResizeCallback(
+    int element_instance_id,
+    const GuestViewContainer::ResizeCallback& callback) {
+  auto guest_view_container = GuestViewContainer::FromID(element_instance_id);
+  if (guest_view_container)
+    guest_view_container->RegisterElementResizeCallback(callback);
 }
 
 void WebFrame::AttachGuest(int id) {
@@ -85,7 +95,7 @@ void WebFrame::AttachGuest(int id) {
 void WebFrame::SetSpellCheckProvider(mate::Arguments* args,
                                      const std::string& language,
                                      bool auto_spell_correct_turned_on,
-                                     v8::Handle<v8::Object> provider) {
+                                     v8::Local<v8::Object> provider) {
   if (!provider->Has(mate::StringToV8(args->isolate(), "spellCheck"))) {
     args->ThrowError("\"spellCheck\" has to be defined");
     return;
@@ -106,6 +116,8 @@ mate::ObjectTemplateBuilder WebFrame::GetObjectTemplateBuilder(
       .SetMethod("getZoomFactor", &WebFrame::GetZoomFactor)
       .SetMethod("registerEmbedderCustomElement",
                  &WebFrame::RegisterEmbedderCustomElement)
+      .SetMethod("registerElementResizeCallback",
+                 &WebFrame::RegisterElementResizeCallback)
       .SetMethod("attachGuest", &WebFrame::AttachGuest)
       .SetMethod("setSpellCheckProvider", &WebFrame::SetSpellCheckProvider)
       .SetMethod("registerUrlSchemeAsSecure",
@@ -123,8 +135,8 @@ mate::Handle<WebFrame> WebFrame::Create(v8::Isolate* isolate) {
 
 namespace {
 
-void Initialize(v8::Handle<v8::Object> exports, v8::Handle<v8::Value> unused,
-                v8::Handle<v8::Context> context, void* priv) {
+void Initialize(v8::Local<v8::Object> exports, v8::Local<v8::Value> unused,
+                v8::Local<v8::Context> context, void* priv) {
   v8::Isolate* isolate = context->GetIsolate();
   mate::Dictionary dict(isolate, exports);
   dict.Set("webFrame", atom::api::WebFrame::Create(isolate));

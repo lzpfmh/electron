@@ -87,6 +87,9 @@ const char kDisableAutoHideCursor[] = "disable-auto-hide-cursor";
 // Use the OS X's standard window instead of the textured window.
 const char kStandardWindow[] = "standard-window";
 
+// Path to client certificate.
+const char kClientCertificate[] = "client-certificate";
+
 // Web runtime features.
 const char kExperimentalFeatures[]       = "experimental-features";
 const char kExperimentalCanvasFeatures[] = "experimental-canvas-features";
@@ -95,8 +98,14 @@ const char kOverlayScrollbars[]          = "overlay-scrollbars";
 const char kOverlayFullscreenVideo[]     = "overlay-fullscreen-video";
 const char kSharedWorker[]               = "shared-worker";
 
+// Set page visiblity to always visible.
+const char kPageVisibility[] = "page-visibility";
+
 // Disable HTTP cache.
 const char kDisableHttpCache[] = "disable-http-cache";
+
+// Register schemes to standard.
+const char kRegisterStandardSchemes[] = "register-standard-schemes";
 
 }  // namespace switches
 

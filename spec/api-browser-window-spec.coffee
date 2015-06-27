@@ -90,12 +90,24 @@ describe 'browser-window module', ->
         done()
 
   describe 'BrowserWindow.setSize(width, height)', ->
-    it 'sets the window size', ->
-      size = [400, 400]
+    it 'sets the window size', (done) ->
+      size = [300, 400]
+      w.once 'resize', ->
+        newSize = w.getSize()
+        assert.equal newSize[0], size[0]
+        assert.equal newSize[1], size[1]
+        done()
       w.setSize size[0], size[1]
-      after = w.getSize()
-      assert.equal after[0], size[0]
-      assert.equal after[1], size[1]
+
+  describe 'BrowserWindow.setPosition(x, y)', ->
+    it 'sets the window position', (done) ->
+      pos = [10, 10]
+      w.once 'move', ->
+        newPos = w.getPosition()
+        assert.equal newPos[0], pos[0]
+        assert.equal newPos[1], pos[1]
+        done()
+      w.setPosition pos[0], pos[1]
 
   describe 'BrowserWindow.setContentSize(width, height)', ->
     it 'sets the content size', ->
@@ -176,6 +188,7 @@ describe 'browser-window module', ->
       w.loadUrl 'file://' + path.join(fixtures, 'api', 'close-beforeunload-empty-string.html')
 
   describe 'new-window event', ->
+    return if isCI and process.platform is 'darwin'
     it 'emits when window.open is called', (done) ->
       w.webContents.once 'new-window', (e, url, frameName) ->
         e.preventDefault()
@@ -218,6 +231,7 @@ describe 'browser-window module', ->
       w.minimize()
 
   describe 'will-navigate event', ->
+    return if isCI and process.platform is 'darwin'
     it 'emits when user starts a navigation', (done) ->
       @timeout 10000
       w.webContents.on 'will-navigate', (event, url) ->
@@ -227,6 +241,7 @@ describe 'browser-window module', ->
       w.loadUrl "file://#{fixtures}/pages/will-navigate.html"
 
   describe 'dom-ready event', ->
+    return if isCI and process.platform is 'darwin'
     it 'emits when document is loaded', (done) ->
       ipc = remote.require 'ipc'
       server = http.createServer (req, res) ->

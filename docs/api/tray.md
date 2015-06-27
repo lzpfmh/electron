@@ -15,7 +15,7 @@ app.on('ready', function(){
     { label: 'Item1', type: 'radio' },
     { label: 'Item2', type: 'radio' },
     { label: 'Item3', type: 'radio', checked: true },
-    { label: 'Item4', type: 'radio' },
+    { label: 'Item4', type: 'radio' }
   ]);
   appIcon.setToolTip('This is my application.');
   appIcon.setContextMenu(contextMenu);
@@ -55,7 +55,7 @@ Creates a new tray icon associated with the `image`.
 
 Emitted when the tray icon is clicked.
 
-__Note:__ The `bounds` payload is only implemented on OS X.
+__Note:__ The `bounds` payload is only implemented on OS X and Windows 7 or newer.
 
 ### Event: 'double-clicked'
 
@@ -96,7 +96,7 @@ Sets the `image` associated with this tray icon.
 
 * `image` [NativeImage](native-image.md)
 
-Sets the `image` associated with this tray icon when pressed.
+Sets the `image` associated with this tray icon when pressed on OS X.
 
 ### Tray.setToolTip(toolTip)
 

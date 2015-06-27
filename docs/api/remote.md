@@ -3,7 +3,7 @@
 The `remote` module provides a simple way to do inter-process communication
 between the renderer process and the main process.
 
-In Electron, only GUI-related modules are available in the renderer process.
+In Electron, only GUI-unrelated modules are available in the renderer process.
 Without the `remote` module, users who wanted to call a main process API in
 the renderer process would have to explicitly send inter-process messages
 to the main process. With the `remote` module, users can invoke methods of
@@ -19,6 +19,8 @@ var BrowserWindow = remote.require('browser-window');
 var win = new BrowserWindow({ width: 800, height: 600 });
 win.loadUrl('https://github.com');
 ```
+
+Note: for the reverse (access renderer process from main process), you can use [webContents.executeJavascript](https://github.com/atom/electron/blob/master/docs/api/browser-window.md#browserwindowwebcontents).
 
 ## Remote objects
 
@@ -97,7 +99,8 @@ returns a `Buffer` by calling the passed callback:
 ```javascript
 var remote = require('remote');
 var fs = require('fs');
-remote.getCurrentWindow().capturePage(function(buf) {
+remote.getCurrentWindow().capturePage(function(image) {
+  var buf = image.toPng();
   fs.writeFile('/tmp/screenshot.png', buf, function(err) {
     console.log(err);
   });
@@ -115,7 +118,8 @@ The work-around is to write the `buf` in the main process, where it is a real
 
 ```javascript
 var remote = require('remote');
-remote.getCurrentWindow().capturePage(function(buf) {
+remote.getCurrentWindow().capturePage(function(image) {
+  var buf = image.toPng();
   remote.require('fs').writeFile('/tmp/screenshot.png', buf, function(err) {
     console.log(err);
   });

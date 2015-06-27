@@ -8,11 +8,9 @@
 #include <string>
 #include <vector>
 
-#include "atom/browser/api/event_emitter.h"
-#include "brightray/browser/default_web_contents_delegate.h"
-#include "content/public/browser/browser_plugin_guest_delegate.h"
+#include "atom/browser/api/trackable_object.h"
+#include "atom/browser/common_web_contents_delegate.h"
 #include "content/public/common/favicon_url.h"
-#include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "native_mate/handle.h"
 #include "ui/gfx/image/image.h"
@@ -22,21 +20,25 @@ class InspectableWebContents;
 }
 
 namespace mate {
+class Arguments;
 class Dictionary;
 }
 
 namespace atom {
 
-class AtomJavaScriptDialogManager;
-class WebDialogHelper;
+struct SetSizeParams;
+class WebViewGuestDelegate;
 
 namespace api {
 
-class WebContents : public mate::EventEmitter,
-                    public content::BrowserPluginGuestDelegate,
-                    public content::WebContentsDelegate,
+class WebContents : public mate::TrackableObject<WebContents>,
+                    public CommonWebContentsDelegate,
                     public content::WebContentsObserver {
  public:
+  // For node.js callback function type: function(error, buffer)
+  typedef base::Callback<void(v8::Local<v8::Value>, v8::Local<v8::Value>)>
+      PrintToPDFCallback;
+
   // Create from an existing WebContents.
   static mate::Handle<WebContents> CreateFrom(
       v8::Isolate* isolate, content::WebContents* web_contents);
@@ -47,6 +49,8 @@ class WebContents : public mate::EventEmitter,
 
   void Destroy();
   bool IsAlive() const;
+  int GetID() const;
+  bool Equal(const WebContents* web_contents) const;
   void LoadURL(const GURL& url, const mate::Dictionary& options);
   base::string16 GetTitle() const;
   bool IsLoading() const;
@@ -56,18 +60,26 @@ class WebContents : public mate::EventEmitter,
   void GoBack();
   void GoForward();
   void GoToOffset(int offset);
-  int GetRoutingID() const;
-  int GetProcessID() const;
   bool IsCrashed() const;
   void SetUserAgent(const std::string& user_agent);
   void InsertCSS(const std::string& css);
   void ExecuteJavaScript(const base::string16& code);
-  void OpenDevTools();
+  void OpenDevTools(mate::Arguments* args);
   void CloseDevTools();
   bool IsDevToolsOpened();
+  void ToggleDevTools();
   void InspectElement(int x, int y);
+  void InspectServiceWorker();
+  v8::Local<v8::Value> Session(v8::Isolate* isolate);
   void HasServiceWorker(const base::Callback<void(bool)>&);
   void UnregisterServiceWorker(const base::Callback<void(bool)>&);
+  void SetAudioMuted(bool muted);
+  bool IsAudioMuted();
+  void Print(mate::Arguments* args);
+
+  // Print current page as PDF.
+  void PrintToPDF(const base::DictionaryValue& setting,
+                  const PrintToPDFCallback& callback);
 
   // Editing commands.
   void Undo();
@@ -75,6 +87,7 @@ class WebContents : public mate::EventEmitter,
   void Cut();
   void Copy();
   void Paste();
+  void PasteAndMatchStyle();
   void Delete();
   void SelectAll();
   void Unselect();
@@ -85,23 +98,10 @@ class WebContents : public mate::EventEmitter,
   bool SendIPCMessage(const base::string16& channel,
                       const base::ListValue& args);
 
-  // Toggles autosize mode for corresponding <webview>.
-  void SetAutoSize(bool enabled,
-                   const gfx::Size& min_size,
-                   const gfx::Size& max_size);
-
-  // Sets the transparency of the guest.
+  // Methods for creating <webview>.
+  void SetSize(const SetSizeParams& params);
   void SetAllowTransparency(bool allow);
-
-  // Returns whether this is a guest view.
-  bool is_guest() const { return guest_instance_id_ != -1; }
-
-  // Returns whether this guest has an associated embedder.
-  bool attached() const { return !!embedder_web_contents_; }
-
-  content::WebContents* web_contents() const {
-    return content::WebContentsObserver::web_contents();
-  }
+  bool IsGuest() const;
 
  protected:
   explicit WebContents(content::WebContents* web_contents);
@@ -127,29 +127,28 @@ class WebContents : public mate::EventEmitter,
       const GURL& target_url,
       const std::string& partition_id,
       content::SessionStorageNamespace* session_storage_namespace) override;
-  void CloseContents(content::WebContents* source) override;
   content::WebContents* OpenURLFromTab(
       content::WebContents* source,
       const content::OpenURLParams& params) override;
-  content::JavaScriptDialogManager* GetJavaScriptDialogManager(
-      content::WebContents* source) override;
-  void RunFileChooser(content::WebContents* web_contents,
-                      const content::FileChooserParams& params) override;
-  void EnumerateDirectory(content::WebContents* web_contents,
-                          int request_id,
-                          const base::FilePath& path) override;
-  bool CheckMediaAccessPermission(content::WebContents* web_contents,
-                                  const GURL& security_origin,
-                                  content::MediaStreamType type) override;
-  void RequestMediaAccessPermission(
-      content::WebContents*,
-      const content::MediaStreamRequest&,
-      const content::MediaResponseCallback&) override;
+  void BeforeUnloadFired(content::WebContents* tab,
+                         bool proceed,
+                         bool* proceed_to_fire_unload) override;
+  void MoveContents(content::WebContents* source,
+                    const gfx::Rect& pos) override;
+  void CloseContents(content::WebContents* source) override;
+  void ActivateContents(content::WebContents* contents) override;
+  bool IsPopupOrPanel(const content::WebContents* source) const override;
   void HandleKeyboardEvent(
       content::WebContents* source,
       const content::NativeWebKeyboardEvent& event) override;
+  void EnterFullscreenModeForTab(content::WebContents* source,
+                                 const GURL& origin) override;
+  void ExitFullscreenModeForTab(content::WebContents* source) override;
+  void RendererUnresponsive(content::WebContents* source) override;
+  void RendererResponsive(content::WebContents* source) override;
 
   // content::WebContentsObserver:
+  void BeforeUnloadFired(const base::TimeTicks& proceed_time) override;
   void RenderViewDeleted(content::RenderViewHost*) override;
   void RenderProcessGone(base::TerminationStatus status) override;
   void DocumentLoadedInFrame(
@@ -164,8 +163,8 @@ class WebContents : public mate::EventEmitter,
                               const GURL& validated_url,
                               int error_code,
                               const base::string16& error_description) override;
-  void DidStartLoading(content::RenderViewHost* render_view_host) override;
-  void DidStopLoading(content::RenderViewHost* render_view_host) override;
+  void DidStartLoading() override;
+  void DidStopLoading() override;
   void DidGetResourceResponseStart(
       const content::ResourceRequestDetails& details) override;
   void DidGetRedirectForResourceRequest(
@@ -175,26 +174,22 @@ class WebContents : public mate::EventEmitter,
       const content::LoadCommittedDetails& details,
       const content::FrameNavigateParams& params) override;
   bool OnMessageReceived(const IPC::Message& message) override;
-  void RenderViewReady() override;
   void WebContentsDestroyed() override;
   void NavigationEntryCommitted(
       const content::LoadCommittedDetails& load_details) override;
   void TitleWasSet(content::NavigationEntry* entry, bool explicit_set) override;
   void DidUpdateFaviconURL(
       const std::vector<content::FaviconURL>& urls) override;
-
-  // content::BrowserPluginGuestDelegate:
-  void DidAttach(int guest_proxy_routing_id) final;
-  void ElementSizeChanged(const gfx::Size& size) final;
-  content::WebContents* GetOwnerWebContents() const final;
-  void GuestSizeChanged(const gfx::Size& new_size) final;
-  void RegisterDestructionCallback(const DestructionCallback& callback) final;
-  void SetGuestSizer(content::GuestSizer* guest_sizer) final;
-  void WillAttach(content::WebContents* embedder_web_contents,
-                  int element_instance_id,
-                  bool is_full_page_plugin) final;
+  void PluginCrashed(const base::FilePath& plugin_path,
+                     base::ProcessId plugin_pid) override;
 
  private:
+  enum Type {
+    BROWSER_WINDOW,  // Used by BrowserWindow.
+    WEB_VIEW,  // Used by <webview>.
+    REMOTE,  // Thin wrap around an existing WebContents.
+  };
+
   // Called when received a message from renderer.
   void OnRendererMessage(const base::string16& channel,
                          const base::ListValue& args);
@@ -204,48 +199,12 @@ class WebContents : public mate::EventEmitter,
                              const base::ListValue& args,
                              IPC::Message* message);
 
-  void GuestSizeChangedDueToAutoSize(const gfx::Size& old_size,
-                                     const gfx::Size& new_size);
+  v8::Global<v8::Value> session_;
 
-  scoped_ptr<WebDialogHelper> web_dialog_helper_;
-  scoped_ptr<AtomJavaScriptDialogManager> dialog_manager_;
+  scoped_ptr<WebViewGuestDelegate> guest_delegate_;
 
-  // Unique ID for a guest WebContents.
-  int guest_instance_id_;
-
-  // |element_instance_id_| is an identifer that's unique to a particular
-  // element.
-  int element_instance_id_;
-
-  DestructionCallback destruction_callback_;
-
-  // Stores whether the contents of the guest can be transparent.
-  bool guest_opaque_;
-
-  // Stores the WebContents that managed by this class.
-  scoped_ptr<brightray::InspectableWebContents> storage_;
-
-  // The WebContents that attaches this guest view.
-  content::WebContents* embedder_web_contents_;
-
-  // The size of the container element.
-  gfx::Size element_size_;
-
-  // The size of the guest content. Note: In autosize mode, the container
-  // element may not match the size of the guest.
-  gfx::Size guest_size_;
-
-  // A pointer to the guest_sizer.
-  content::GuestSizer* guest_sizer_;
-
-  // Indicates whether autosize mode is enabled or not.
-  bool auto_size_enabled_;
-
-  // The maximum size constraints of the container element in autosize mode.
-  gfx::Size max_auto_size_;
-
-  // The minimum size constraints of the container element in autosize mode.
-  gfx::Size min_auto_size_;
+  // The type of current WebContents.
+  Type type_;
 
   DISALLOW_COPY_AND_ASSIGN(WebContents);
 };

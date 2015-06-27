@@ -30,7 +30,9 @@ RenderView* GetCurrentRenderView() {
   return RenderView::FromWebView(view);
 }
 
-void Send(const base::string16& channel, const base::ListValue& arguments) {
+void Send(v8::Isolate* isolate,
+          const base::string16& channel,
+          const base::ListValue& arguments) {
   RenderView* render_view = GetCurrentRenderView();
   if (render_view == NULL)
     return;
@@ -39,10 +41,11 @@ void Send(const base::string16& channel, const base::ListValue& arguments) {
       render_view->GetRoutingID(), channel, arguments));
 
   if (!success)
-    node::ThrowError("Unable to send AtomViewHostMsg_Message");
+    node::ThrowError(isolate, "Unable to send AtomViewHostMsg_Message");
 }
 
-base::string16 SendSync(const base::string16& channel,
+base::string16 SendSync(v8::Isolate* isolate,
+                        const base::string16& channel,
                         const base::ListValue& arguments) {
   base::string16 json;
 
@@ -57,13 +60,13 @@ base::string16 SendSync(const base::string16& channel,
   bool success = render_view->Send(message);
 
   if (!success)
-    node::ThrowError("Unable to send AtomViewHostMsg_Message_Sync");
+    node::ThrowError(isolate, "Unable to send AtomViewHostMsg_Message_Sync");
 
   return json;
 }
 
-void Initialize(v8::Handle<v8::Object> exports, v8::Handle<v8::Value> unused,
-                v8::Handle<v8::Context> context, void* priv) {
+void Initialize(v8::Local<v8::Object> exports, v8::Local<v8::Value> unused,
+                v8::Local<v8::Context> context, void* priv) {
   mate::Dictionary dict(context->GetIsolate(), exports);
   dict.SetMethod("send", &Send);
   dict.SetMethod("sendSync", &SendSync);

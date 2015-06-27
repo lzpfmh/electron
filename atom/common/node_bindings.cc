@@ -7,7 +7,8 @@
 #include <string>
 #include <vector>
 
-#include "atom/app/atom_main_args.h"
+#include "atom/common/atom_command_line.h"
+#include "atom/common/event_emitter_caller.h"
 #include "atom/common/native_mate_converters/file_path_converter.h"
 #include "base/command_line.h"
 #include "base/base_paths.h"
@@ -35,6 +36,7 @@ REFERENCE_MODULE(atom_browser_content_tracing);
 REFERENCE_MODULE(atom_browser_dialog);
 REFERENCE_MODULE(atom_browser_menu);
 REFERENCE_MODULE(atom_browser_power_monitor);
+REFERENCE_MODULE(atom_browser_power_save_blocker);
 REFERENCE_MODULE(atom_browser_protocol);
 REFERENCE_MODULE(atom_browser_global_shortcut);
 REFERENCE_MODULE(atom_browser_tray);
@@ -128,6 +130,12 @@ void NodeBindings::Initialize() {
   node::g_standalone_mode = is_browser_;
   node::g_upstream_node_mode = false;
 
+#if defined(OS_LINUX)
+  // Get real command line in renderer process forked by zygote.
+  if (!is_browser_)
+    AtomCommandLine::InitializeFromCommandLine();
+#endif
+
   // Parse the debug args.
   auto args = AtomCommandLine::argv();
   for (const std::string& arg : args)
@@ -178,6 +186,8 @@ void NodeBindings::LoadEnvironment(node::Environment* env) {
 
   if (node::use_debug_agent)
     node::EnableDebug(env);
+
+  mate::EmitEvent(env->isolate(), env->process_object(), "loaded");
 }
 
 void NodeBindings::PrepareMessageLoop() {

@@ -43,7 +43,7 @@ You can also create a window without chrome by using
      other windows
   * `fullscreen` Boolean - Whether the window should show in fullscreen, when
     set to `false` the fullscreen button would also be hidden on OS X
-  * `skip-taskbar` Boolean - Do not show window in Taskbar
+  * `skip-taskbar` Boolean - Do not show window in taskbar
   * `zoom-factor` Number - The default zoom factor of the page, zoom factor is
     zoom percent / 100, so `3.0` represents `300%`
   * `kiosk` Boolean - The kiosk mode
@@ -97,6 +97,10 @@ You can also create a window without chrome by using
     * `shared-worker` Boolean
     * `direct-write` Boolean - Whether the DirectWrite font rendering system on
        Windows is enabled
+    * `page-visibility` Boolean - Page would be forced to be always in visible
+       or hidden state once set, instead of reflecting current window's
+       visibility. Users can set it to `true` to prevent throttling of DOM
+       timers.
 
 Creates a new `BrowserWindow` with native properties set by the `options`.
 Usually you only need to set the `width` and `height`, other properties will
@@ -127,9 +131,9 @@ window.onbeforeunload = function(e) {
   console.log('I do not want to be closed');
 
   // Unlike usual browsers, in which a string should be returned and the user is
-  // prompted to confirm the page unload. Electron gives the power completely
-  // to the developers, return empty string or false would prevent the unloading
-  // now. You can also use the dialog API to let user confirm it.
+  // prompted to confirm the page unload, Electron gives developers more options.
+  // Returning empty string or false would prevent the unloading now.
+  // You can also use the dialog API to let the user confirm closing the application.
   return false;
 };
 ```
@@ -171,6 +175,22 @@ Emitted when window is minimized.
 
 Emitted when window is restored from minimized state.
 
+### Event: 'resize'
+
+Emitted when window is getting resized.
+
+### Event: 'move'
+
+Emitted when the window is getting moved to a new position.
+
+__Note__: On OS X this event is just an alias of `moved`.
+
+### Event: 'moved'
+
+Emitted once when the window is moved to a new position.
+
+__Note__: This event is available only on OS X.
+
 ### Event: 'enter-full-screen'
 
 Emitted when window enters full screen state.
@@ -178,6 +198,14 @@ Emitted when window enters full screen state.
 ### Event: 'leave-full-screen'
 
 Emitted when window leaves full screen state.
+
+### Event: 'enter-html-full-screen'
+
+Emitted when window enters full screen state triggered by html api.
+
+### Event: 'leave-html-full-screen'
+
+Emitted when window leaves full screen state triggered by html api.
 
 ### Event: 'devtools-opened'
 
@@ -190,6 +218,21 @@ Emitted when devtools is closed.
 ### Event: 'devtools-focused'
 
 Emitted when devtools is focused / opened.
+
+### Event: 'app-command':
+
+Emitted when an [App Command](https://msdn.microsoft.com/en-us/library/windows/desktop/ms646275(v=vs.85).aspx) is invoked. These are typically related to keyboard media keys or browser commands, as well as the "Back" button built into some mice on Windows.
+
+```js
+someWindow.on('app-command', function(e, cmd) {
+  // Navigate the window back when the user hits their mouse back button
+  if (cmd === 'browser-backward' && someWindow.webContents.canGoBack()) {
+    someWindow.webContents.goBack();
+  }
+});
+```
+
+__Note__: This event is only fired on Windows.
 
 ### Class Method: BrowserWindow.getAllWindows()
 
@@ -436,7 +479,7 @@ Starts or stops flashing the window to attract user's attention.
 
 * `skip` Boolean
 
-Makes the window do not show in Taskbar.
+Makes the window not show in the taskbar.
 
 ### BrowserWindow.setKiosk(flag)
 
@@ -455,13 +498,13 @@ Returns whether the window is in kiosk mode.
 Sets the pathname of the file the window represents, and the icon of the file
 will show in window's title bar.
 
-__Note__: This API is available only on OS X.
+__Note__: This API is only available on OS X.
 
 ### BrowserWindow.getRepresentedFilename()
 
 Returns the pathname of the file the window represents.
 
-__Note__: This API is available only on OS X.
+__Note__: This API is only available on OS X.
 
 ### BrowserWindow.setDocumentEdited(edited)
 
@@ -470,13 +513,13 @@ __Note__: This API is available only on OS X.
 Specifies whether the window’s document has been edited, and the icon in title
 bar will become grey when set to `true`.
 
-__Note__: This API is available only on OS X.
+__Note__: This API is only available on OS X.
 
 ### BrowserWindow.IsDocumentEdited()
 
 Whether the window's document has been edited.
 
-__Note__: This API is available only on OS X.
+__Note__: This API is only available on OS X.
 
 ### BrowserWindow.openDevTools([options])
 
@@ -489,6 +532,10 @@ Opens the developer tools.
 
 Closes the developer tools.
 
+### BrowserWindow.isDevToolsOpened()
+
+Returns whether the developer tools are opened.
+
 ### BrowserWindow.toggleDevTools()
 
 Toggle the developer tools.
@@ -499,6 +546,10 @@ Toggle the developer tools.
 * `y` Integer
 
 Starts inspecting element at position (`x`, `y`).
+
+### BrowserWindow.inspectServiceWorker()
+
+Opens the developer tools for the service worker context present in the web contents.
 
 ### BrowserWindow.focusOnWebView()
 
@@ -524,20 +575,15 @@ process.
 
 ### BrowserWindow.print([options])
 
-* `options` Object
-  * `silent` Boolean - Don't ask user for print settings, defaults to `false`
-  * `printBackground` Boolean - Also prints the background color and image of
-    the web page, defaults to `false`.
+Same with `webContents.print([options])`
 
-Prints window's web page. When `silent` is set to `false`, Electron will pick
-up system's default printer and default settings for printing.
+### BrowserWindow.printToPDF(options, callback)
 
-Calling `window.print()` in web page is equivalent to call
-`BrowserWindow.print({silent: false, printBackground: false})`.
+Same with `webContents.printToPDF(options, callback)`
 
-### BrowserWindow.loadUrl(url)
+### BrowserWindow.loadUrl(url, [options])
 
-Same with `webContents.loadUrl(url)`.
+Same with `webContents.loadUrl(url, [options])`.
 
 ### BrowserWindow.reload()
 
@@ -547,7 +593,8 @@ Same with `webContents.reload`.
 
 * `menu` Menu
 
-Sets the `menu` as the window top menu.
+Sets the `menu` as the window's menu bar, setting it to `null` will remove the
+menu bar.
 
 __Note:__ This API is not available on OS X.
 
@@ -567,20 +614,20 @@ it will assume `app.getName().desktop`.
 ### BrowserWindow.setOverlayIcon(overlay, description)
 
 * `overlay` [NativeImage](native-image.md) - the icon to display on the bottom
-right corner of the Taskbar icon. If this parameter is `null`, the overlay is
+right corner of the taskbar icon. If this parameter is `null`, the overlay is
 cleared
 * `description` String - a description that will be provided to Accessibility
 screen readers
 
-Sets a 16px overlay onto the current Taskbar icon, usually used to convey some sort of application status or to passively notify the user.
+Sets a 16px overlay onto the current taskbar icon, usually used to convey some sort of application status or to passively notify the user.
 
-__Note:__ This API is only available on Windows, Win7 or above
+__Note:__ This API is only available on Windows (Windows 7 and above)
 
 ### BrowserWindow.showDefinitionForSelection()
 
 Shows pop-up dictionary that searches the selected word on the page.
 
-__Note__: This API is available only on OS X.
+__Note__: This API is only available on OS X.
 
 ### BrowserWindow.setAutoHideMenuBar(hide)
 
@@ -666,6 +713,7 @@ Corresponds to the points in time when the spinner of the tab stops spinning.
 * `httpResponseCode` Integer
 * `requestMethod` String
 * `referrer` String
+* `headers` Object
 
 Emitted when details regarding a requested resource is available.
 `status` indicates the socket connection to download the resource.
@@ -715,7 +763,7 @@ Calling `event.preventDefault()` can prevent creating new windows.
 Emitted when user or the page wants to start an navigation, it can happen when
 `window.location` object is changed or user clicks a link in the page.
 
-This event will not emit when the navigation is started programmely with APIs
+This event will not emit when the navigation is started programmatically with APIs
 like `WebContents.loadUrl` and `WebContents.back`.
 
 Calling `event.preventDefault()` can prevent the navigation.
@@ -724,13 +772,24 @@ Calling `event.preventDefault()` can prevent the navigation.
 
 Emitted when the renderer process is crashed.
 
+### Event: 'plugin-crashed'
+
+* `event` Event
+* `name` String
+* `version` String
+
+Emitted when a plugin process is crashed.
+
 ### Event: 'destroyed'
 
 Emitted when the WebContents is destroyed.
 
-### WebContents.loadUrl(url)
+### WebContents.loadUrl(url, [options])
 
 * `url` URL
+* `options` URL
+  * `httpReferrer` String - A HTTP Referer url
+  * `userAgent` String - A user agent originating the request
 
 Loads the `url` in the window, the `url` must contains the protocol prefix,
 e.g. the `http://` or `file://`.
@@ -778,6 +837,10 @@ Returns whether the web page can go forward.
 
 Returns whether the web page can go to `offset`.
 
+### WebContents.clearHistory()
+
+Clears the navigation history.
+
 ### WebContents.goBack()
 
 Makes the web page go back.
@@ -820,6 +883,16 @@ Injects CSS into this page.
 
 Evaluates `code` in page.
 
+### WebContents.setAudioMuted(muted)
+
++ `muted` Boolean
+
+Set the page muted.
+
+### WebContents.isAudioMuted()
+
+Returns whether this page has been muted.
+
 ### WebContents.undo()
 
 Executes editing command `undo` in page.
@@ -839,6 +912,10 @@ Executes editing command `copy` in page.
 ### WebContents.paste()
 
 Executes editing command `paste` in page.
+
+### WebContents.pasteAndMatchStyle()
+
+Executes editing command `pasteAndMatchStyle` in page.
 
 ### WebContents.delete()
 
@@ -878,6 +955,64 @@ response to `callback`.
 Unregisters any serviceworker if present and returns boolean as
 response to `callback` when the JS promise is fullfilled or false
 when the JS promise is rejected.  
+
+### WebContents.print([options])
+
+* `options` Object
+  * `silent` Boolean - Don't ask user for print settings, defaults to `false`
+  * `printBackground` Boolean - Also prints the background color and image of
+    the web page, defaults to `false`.
+
+Prints window's web page. When `silent` is set to `false`, Electron will pick
+up system's default printer and default settings for printing.
+
+Calling `window.print()` in web page is equivalent to call
+`WebContents.print({silent: false, printBackground: false})`.
+
+**Note:** On Windows, the print API relies on `pdf.dll`. If your application
+doesn't need print feature, you can safely remove `pdf.dll` in saving binary
+size.
+
+### WebContents.printToPDF(options, callback)
+
+* `options` Object
+  * `marginsType` Integer - Specify the type of margins to use
+    * 0 - default
+    * 1 - none
+    * 2 - minimum
+  * `printBackground` Boolean - Whether to print CSS backgrounds.
+  * `printSelectionOnly` Boolean - Whether to print selection only.
+  * `landscape` Boolean - `true` for landscape, `false` for portrait.
+
+* `callback` Function - `function(error, data) {}`
+  * `error` Error
+  * `data` Buffer - PDF file content
+
+Prints windows' web page as PDF with Chromium's preview printing custom
+settings.
+
+By default, an empty `options` will be regarded as
+`{marginsType:0, printBackgrounds:false, printSelectionOnly:false,
+  landscape:false}`.
+
+```javascript
+var BrowserWindow = require('browser-window');
+var fs = require('fs');
+
+var win = new BrowserWindow({width: 800, height: 600});
+win.loadUrl("http://github.com");
+
+win.webContents.on("did-finish-load", function() {
+  // Use default printing options
+  win.webContents.printToPDF({}, function(error, data) {
+    if (error) throw error;
+    fs.writeFile(dist, data, function(error) {
+      if (err)
+        alert('write pdf file error', error);
+    })
+  })
+});
+```
 
 ### WebContents.send(channel[, args...])
 
@@ -919,3 +1054,90 @@ app.on('ready', function() {
    is different from the handlers on the main process.
 2. There is no way to send synchronous messages from the main process to a
    renderer process, because it would be very easy to cause dead locks.
+
+## Class: WebContents.session.cookies
+
+The `cookies` gives you ability to query and modify cookies, an example is:
+
+```javascipt
+var BrowserWindow = require('browser-window');
+
+var win = new BrowserWindow({ width: 800, height: 600 });
+
+win.loadUrl('https://github.com');
+
+win.webContents.on('did-finish-load', function() {
+  // Query all cookies.
+  win.webContents.session.cookies.get({}, function(error, cookies) {
+    if (error) throw error;
+    console.log(cookies);
+  });
+
+  // Query all cookies that are associated with a specific url.
+  win.webContents.session.cookies.get({ url : "http://www.github.com" },
+      function(error, cookies) {
+        if (error) throw error;
+        console.log(cookies);
+  });
+
+  // Set a cookie with the given cookie data;
+  // may overwrite equivalent cookies if they exist.
+  win.webContents.session.cookies.set(
+    { url : "http://www.github.com", name : "dummy_name", value : "dummy"},
+    function(error, cookies) {
+      if (error) throw error;
+      console.log(cookies);
+  });
+});
+```
+
+### WebContents.session.cookies.get(details, callback)
+
+* `details` Object
+  * `url` String - Retrieves cookies which are associated with `url`.
+    Empty imples retrieving cookies of all urls.
+  * `name` String - Filters cookies by name
+  * `domain` String - Retrieves cookies whose domains match or are subdomains of `domains`
+  * `path` String - Retrieves cookies whose path matches `path`
+  * `secure` Boolean - Filters cookies by their Secure property
+  * `session` Boolean - Filters out session or persistent cookies.
+* `callback` Function - function(error, cookies)
+  * `error` Error
+  * `cookies` Array - array of `cookie` objects.
+    * `cookie` - Object
+      *  `name` String - The name of the cookie
+      *  `value` String - The value of the cookie
+      *  `domain` String - The domain of the cookie
+      *  `host_only` String - Whether the cookie is a host-only cookie
+      *  `path` String - The path of the cookie
+      *  `secure` Boolean - Whether the cookie is marked as Secure (typically HTTPS)
+      *  `http_only` Boolean - Whether the cookie is marked as HttpOnly
+      *  `session` Boolean - Whether the cookie is a session cookie or a persistent
+         cookie with an expiration date.
+      *  `expirationDate` Double - (Option) The expiration date of the cookie as
+         the number of seconds since the UNIX epoch. Not provided for session cookies.
+
+
+### WebContents.session.cookies.set(details, callback)
+
+* `details` Object
+  * `url` String - Retrieves cookies which are associated with `url`
+  * `name` String - The name of the cookie. Empty by default if omitted.
+  * `value` String - The value of the cookie. Empty by default if omitted.
+  * `domain` String - The domain of the cookie. Empty by default if omitted.
+  * `path` String - The path of the cookie. Empty by default if omitted.
+  * `secure` Boolean - Whether the cookie should be marked as Secure. Defaults to false.
+  * `session` Boolean - Whether the cookie should be marked as HttpOnly. Defaults to false.
+  * `expirationDate` Double -	The expiration date of the cookie as the number of
+    seconds since the UNIX epoch. If omitted, the cookie becomes a session cookie.
+
+* `callback` Function - function(error)
+  * `error` Error
+
+### WebContents.session.cookies.remove(details, callback)
+
+* `details` Object
+  * `url` String - The URL associated with the cookie
+  * `name` String - The name of cookie to remove
+* `callback` Function - function(error)
+  * `error` Error

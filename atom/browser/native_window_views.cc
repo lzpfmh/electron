@@ -16,7 +16,8 @@
 #include "atom/common/draggable_region.h"
 #include "atom/common/options_switches.h"
 #include "base/strings/utf_string_conversions.h"
-#include "browser/inspectable_web_contents_view.h"
+#include "brightray/browser/inspectable_web_contents.h"
+#include "brightray/browser/inspectable_web_contents_view.h"
 #include "content/public/browser/native_web_keyboard_event.h"
 #include "native_mate/dictionary.h"
 #include "ui/aura/window.h"
@@ -123,6 +124,70 @@ bool IsAltModifier(const content::NativeWebKeyboardEvent& event) {
          (modifiers == (Modifiers::AltKey | Modifiers::IsRight));
 }
 
+#if defined(OS_WIN)
+// Convert Win32 WM_APPCOMMANDS to strings.
+const char* AppCommandToString(int command_id) {
+  switch (command_id) {
+    case APPCOMMAND_BROWSER_BACKWARD       : return "browser-backward";
+    case APPCOMMAND_BROWSER_FORWARD        : return "browser-forward";
+    case APPCOMMAND_BROWSER_REFRESH        : return "browser-refresh";
+    case APPCOMMAND_BROWSER_STOP           : return "browser-stop";
+    case APPCOMMAND_BROWSER_SEARCH         : return "browser-search";
+    case APPCOMMAND_BROWSER_FAVORITES      : return "browser-favorites";
+    case APPCOMMAND_BROWSER_HOME           : return "browser-home";
+    case APPCOMMAND_VOLUME_MUTE            : return "volume-mute";
+    case APPCOMMAND_VOLUME_DOWN            : return "volume-down";
+    case APPCOMMAND_VOLUME_UP              : return "volume-up";
+    case APPCOMMAND_MEDIA_NEXTTRACK        : return "media-nexttrack";
+    case APPCOMMAND_MEDIA_PREVIOUSTRACK    : return "media-previoustrack";
+    case APPCOMMAND_MEDIA_STOP             : return "media-stop";
+    case APPCOMMAND_MEDIA_PLAY_PAUSE       : return "media-play_pause";
+    case APPCOMMAND_LAUNCH_MAIL            : return "launch-mail";
+    case APPCOMMAND_LAUNCH_MEDIA_SELECT    : return "launch-media-select";
+    case APPCOMMAND_LAUNCH_APP1            : return "launch-app1";
+    case APPCOMMAND_LAUNCH_APP2            : return "launch-app2";
+    case APPCOMMAND_BASS_DOWN              : return "bass-down";
+    case APPCOMMAND_BASS_BOOST             : return "bass-boost";
+    case APPCOMMAND_BASS_UP                : return "bass-up";
+    case APPCOMMAND_TREBLE_DOWN            : return "treble-down";
+    case APPCOMMAND_TREBLE_UP              : return "treble-up";
+    case APPCOMMAND_MICROPHONE_VOLUME_MUTE : return "microphone-volume-mute";
+    case APPCOMMAND_MICROPHONE_VOLUME_DOWN : return "microphone-volume-down";
+    case APPCOMMAND_MICROPHONE_VOLUME_UP   : return "microphone-volume-up";
+    case APPCOMMAND_HELP                   : return "help";
+    case APPCOMMAND_FIND                   : return "find";
+    case APPCOMMAND_NEW                    : return "new";
+    case APPCOMMAND_OPEN                   : return "open";
+    case APPCOMMAND_CLOSE                  : return "close";
+    case APPCOMMAND_SAVE                   : return "save";
+    case APPCOMMAND_PRINT                  : return "print";
+    case APPCOMMAND_UNDO                   : return "undo";
+    case APPCOMMAND_REDO                   : return "redo";
+    case APPCOMMAND_COPY                   : return "copy";
+    case APPCOMMAND_CUT                    : return "cut";
+    case APPCOMMAND_PASTE                  : return "paste";
+    case APPCOMMAND_REPLY_TO_MAIL          : return "reply-to-mail";
+    case APPCOMMAND_FORWARD_MAIL           : return "forward-mail";
+    case APPCOMMAND_SEND_MAIL              : return "send-mail";
+    case APPCOMMAND_SPELL_CHECK            : return "spell-check";
+    case APPCOMMAND_MIC_ON_OFF_TOGGLE      : return "mic-on-off-toggle";
+    case APPCOMMAND_CORRECTION_LIST        : return "correction-list";
+    case APPCOMMAND_MEDIA_PLAY             : return "media-play";
+    case APPCOMMAND_MEDIA_PAUSE            : return "media-pause";
+    case APPCOMMAND_MEDIA_RECORD           : return "media-record";
+    case APPCOMMAND_MEDIA_FAST_FORWARD     : return "media-fast-forward";
+    case APPCOMMAND_MEDIA_REWIND           : return "media-rewind";
+    case APPCOMMAND_MEDIA_CHANNEL_UP       : return "media-channel-up";
+    case APPCOMMAND_MEDIA_CHANNEL_DOWN     : return "media-channel-down";
+    case APPCOMMAND_DELETE                 : return "delete";
+    case APPCOMMAND_DICTATE_OR_COMMAND_CONTROL_TOGGLE:
+      return "dictate-or-command-control-toggle";
+    default:
+      return "unkown";
+  }
+}
+#endif
+
 class NativeWindowClientView : public views::ClientView {
  public:
   NativeWindowClientView(views::Widget* widget,
@@ -132,7 +197,7 @@ class NativeWindowClientView : public views::ClientView {
   virtual ~NativeWindowClientView() {}
 
   bool CanClose() override {
-    static_cast<NativeWindowViews*>(contents_view())->CloseWebContents();
+    static_cast<NativeWindowViews*>(contents_view())->RequestToClosePage();
     return false;
   }
 
@@ -142,8 +207,9 @@ class NativeWindowClientView : public views::ClientView {
 
 }  // namespace
 
-NativeWindowViews::NativeWindowViews(content::WebContents* web_contents,
-                                     const mate::Dictionary& options)
+NativeWindowViews::NativeWindowViews(
+    brightray::InspectableWebContents* web_contents,
+    const mate::Dictionary& options)
     : NativeWindow(web_contents, options),
       window_(new views::Widget),
       web_view_(inspectable_web_contents()->GetView()->GetView()),
@@ -176,6 +242,7 @@ NativeWindowViews::NativeWindowViews(content::WebContents* web_contents,
   options.Get(switches::kWidth, &width);
   options.Get(switches::kHeight, &height);
   gfx::Rect bounds(0, 0, width, height);
+  widget_size_ = bounds.size();
 
   window_->AddObserver(this);
 
@@ -540,6 +607,19 @@ bool NativeWindowViews::IsKiosk() {
 }
 
 void NativeWindowViews::SetMenu(ui::MenuModel* menu_model) {
+  if (menu_model == nullptr) {
+    // Remove accelerators
+    accelerator_table_.clear();
+    GetFocusManager()->UnregisterAccelerators(this);
+    // and menu bar.
+#if defined(USE_X11)
+    global_menu_bar_.reset();
+#endif
+    SetMenuBarVisibility(false);
+    menu_bar_.reset();
+    return;
+  }
+
   RegisterAccelerators(menu_model);
 
 #if defined(USE_X11)
@@ -712,12 +792,24 @@ void NativeWindowViews::OnWidgetActivationChanged(
   else
     NotifyWindowBlur();
 
-  if (active && GetWebContents() && !IsDevToolsOpened())
-    GetWebContents()->Focus();
+  if (active && inspectable_web_contents() &&
+      !inspectable_web_contents()->IsDevToolsViewShowing())
+    web_contents()->Focus();
 
   // Hide menu bar when window is blured.
   if (!active && menu_bar_autohide_ && menu_bar_visible_)
     SetMenuBarVisibility(false);
+}
+
+void NativeWindowViews::OnWidgetBoundsChanged(
+    views::Widget* widget, const gfx::Rect& bounds) {
+  if (widget != window_.get())
+    return;
+
+  if (widget_size_ != bounds.size()) {
+    NotifyWindowResize();
+    widget_size_ = bounds.size();
+  }
 }
 
 void NativeWindowViews::DeleteDelegate() {
@@ -807,6 +899,10 @@ views::NonClientFrameView* NativeWindowViews::CreateNonClientFrameView(
 #endif
 }
 
+void NativeWindowViews::OnWidgetMove() {
+  NotifyWindowMove();
+}
+
 #if defined(OS_WIN)
 bool NativeWindowViews::ExecuteWindowsCommand(int command_id) {
   // Windows uses the 4 lower order bits of |command_id| for type-specific
@@ -823,6 +919,11 @@ bool NativeWindowViews::ExecuteWindowsCommand(int command_id) {
     is_minimized_ = false;
   } else if ((command_id & sc_mask) == SC_MAXIMIZE) {
     NotifyWindowMaximize();
+  } else {
+    std::string command = AppCommandToString(command_id & sc_mask);
+    FOR_EACH_OBSERVER(NativeWindowObserver,
+                      observers_,
+                      OnExecuteWindowsCommand(command));
   }
   return false;
 }
@@ -839,12 +940,6 @@ void NativeWindowViews::GetDevToolsWindowWMClass(
   *name = base::StringToLowerASCII(*class_name);
 }
 #endif
-
-void NativeWindowViews::HandleMouseDown() {
-  // Hide menu bar when web view is clicked.
-  if (menu_bar_autohide_ && menu_bar_visible_)
-    SetMenuBarVisibility(false);
-}
 
 void NativeWindowViews::HandleKeyboardEvent(
     content::WebContents*,
@@ -914,6 +1009,7 @@ void NativeWindowViews::RegisterAccelerators(ui::MenuModel* menu_model) {
 
 gfx::Rect NativeWindowViews::ContentBoundsToWindowBounds(
     const gfx::Rect& bounds) {
+  gfx::Point origin = bounds.origin();
 #if defined(OS_WIN)
   gfx::Rect dpi_bounds = gfx::win::DIPToScreenRect(bounds);
   gfx::Rect window_bounds = gfx::win::ScreenToDIPRect(
@@ -922,6 +1018,9 @@ gfx::Rect NativeWindowViews::ContentBoundsToWindowBounds(
   gfx::Rect window_bounds =
       window_->non_client_view()->GetWindowBoundsForClientBounds(bounds);
 #endif
+  // The window's position would also be changed, but we only want to change
+  // the size.
+  window_bounds.set_origin(origin);
 
   if (menu_bar_ && menu_bar_visible_)
     window_bounds.set_height(window_bounds.height() + kMenuBarHeight);
@@ -938,9 +1037,10 @@ ui::WindowShowState NativeWindowViews::GetRestoredState() {
 }
 
 // static
-NativeWindow* NativeWindow::Create(content::WebContents* web_contents,
-                                   const mate::Dictionary& options) {
-  return new NativeWindowViews(web_contents, options);
+NativeWindow* NativeWindow::Create(
+    brightray::InspectableWebContents* inspectable_web_contents,
+    const mate::Dictionary& options) {
+  return new NativeWindowViews(inspectable_web_contents, options);
 }
 
 }  // namespace atom

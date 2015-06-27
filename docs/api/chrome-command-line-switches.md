@@ -1,6 +1,6 @@
 # Supported Chrome command line switches
 
-Following command lines switches in Chrome browser are also Supported in
+The following command lines switches in Chrome browser are also supported in
 Electron, you can use [app.commandLine.appendSwitch][append-switch] to append
 them in your app's main script before the [ready][ready] event of [app][app]
 module is emitted:
@@ -11,8 +11,17 @@ app.commandLine.appendSwitch('remote-debugging-port', '8315');
 app.commandLine.appendSwitch('host-rules', 'MAP * 127.0.0.1');
 
 app.on('ready', function() {
+  // Your code here
 });
 ```
+
+## --client-certificate=`path`
+
+Sets `path` of client certificate file.
+
+## --ignore-connections-limit=`domains`
+
+Ignore the connections limit for `domains` list seperated by `,`.
 
 ## --disable-http-cache
 
@@ -60,15 +69,19 @@ Like `--host-rules` but these `rules` only apply to the host resolver.
 
 ## --ignore-certificate-errors
 
-Ignore certificate related errors.
+Ignores certificate related errors.
 
-## --ppapi-flash-path
+## --ppapi-flash-path=`path`
 
-Set path to pepper flash plugin for use.
+Sets `path` of pepper flash plugin.
 
-## --ppapi-flash-version
+## --ppapi-flash-version=`version`
 
-Set the pepper flash version.
+Sets `version` of pepper flash plugin.
+
+## --log-net-log=`path`
+
+Enables saving net log events and writes them to `path`.
 
 ## --v=`log_level`
 

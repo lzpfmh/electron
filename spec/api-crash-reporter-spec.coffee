@@ -5,12 +5,10 @@ url        = require 'url'
 remote     = require 'remote'
 formidable = require 'formidable'
 
+crashReporter = remote.require 'crash-reporter'
 BrowserWindow = remote.require 'browser-window'
 
 describe 'crash-reporter module', ->
-  # We have trouble makeing crash reporter work on Yosemite.
-  return if process.platform is 'darwin'
-
   fixtures = path.resolve __dirname, 'fixtures'
 
   w = null
@@ -41,10 +39,15 @@ describe 'crash-reporter module', ->
         res.end('abc-123-def')
         server.close()
         done()
-    server.listen 0, '127.0.0.1', ->
+    # Server port is generated randomly for the first run, it will be reused
+    # when page is refreshed.
+    port = remote.process.port
+    server.listen port, '127.0.0.1', ->
       {port} = server.address()
+      remote.process.port = port
       url = url.format
         protocol: 'file'
         pathname: path.join fixtures, 'api', 'crash.html'
         search: "?port=#{port}"
+      crashReporter.start {'submitUrl': 'http://127.0.0.1:' + port}
       w.loadUrl url

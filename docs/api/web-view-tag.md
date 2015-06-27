@@ -18,7 +18,7 @@ form, the `webview` tag includes the `src` of the web page and css styles that
 control the appearance of the `webview` container:
 
 ```html
-<webview id="foo" src="https://www.github.com/" style="width:640px; height:480px"></webview>
+<webview id="foo" src="https://www.github.com/" style="display:inline-block; width:640px; height:480px"></webview>
 ```
 
 If you want to control the guest content in any way, you can write JavaScript
@@ -130,6 +130,14 @@ If "on", the guest page will have web security disabled.
 
 ## Methods
 
+The webview element must be loaded before using the methods.  
+**Example**
+```javascript
+webview.addEventListener("dom-ready", function(){
+  webview.openDevTools();
+});
+```
+
 ### `<webview>`.getUrl()
 
 Returns URL of guest page.
@@ -172,6 +180,10 @@ Returns whether guest page can go forward.
 * `offset` Integer
 
 Returns whether guest page can go to `offset`.
+
+### `<webview>`.clearHistory()
+
+Clears the navigation history.
 
 ### `<webview>`.goBack()
 
@@ -234,6 +246,20 @@ Returns whether guest page has a devtools window attached.
 
 Starts inspecting element at position (`x`, `y`) of guest page.
 
+### `<webview>`.inspectServiceWorker()
+
+Opens the devtools for the service worker context present in the guest page.
+
+### `<webview>`.setAudioMuted(muted)
+
++ `muted` Boolean
+
+Set guest page muted.
+
+### `<webview>`.isAudioMuted()
+
+Returns whether guest page has been muted.
+
 ### `<webview>`.undo()
 
 Executes editing command `undo` in page.
@@ -253,6 +279,10 @@ Executes editing command `copy` in page.
 ### `<webview>`.paste()
 
 Executes editing command `paste` in page.
+
+### `<webview>`.pasteAndMatchStyle()
+
+Executes editing command `pasteAndMatchStyle` in page.
 
 ### `<webview>`.delete()
 
@@ -277,6 +307,14 @@ Executes editing command `replace` in page.
 * `text` String
 
 Executes editing command `replaceMisspelling` in page.
+
+### `<webview>.print([options])`
+
+Prints webview's web page. Same with `webContents.print([options])`.
+
+### `<webview>.printToPDF(options, callback)`
+
+Prints webview's web page as PDF, Same with `webContents.printToPDF(options, callback)`
 
 ### `<webview>`.send(channel[, args...])
 
@@ -325,6 +363,7 @@ Corresponds to the points in time when the spinner of the tab stops spinning.
 * `httpResponseCode` Integer
 * `requestMethod` String
 * `referrer` String
+* `headers` Object
 
 Fired when details regarding a requested resource is available.
 `status` indicates socket connection to download the resource.
@@ -355,6 +394,14 @@ url.
 
 Fired when page receives favicon urls.
 
+### enter-html-full-screen
+
+Fired when page enters fullscreen triggered by html api.
+
+### leave-html-full-screen
+
+Fired when page leaves fullscreen triggered by html api.
+
 ### console-message
 
 * `level` Integer
@@ -369,7 +416,7 @@ without regard for log level or other properties.
 
 ```javascript
 webview.addEventListener('console-message', function(e) {
-  console.log('Guest page logged a message: ', e.message);
+  console.log('Guest page logged a message:', e.message);
 });
 ```
 
@@ -427,12 +474,23 @@ webview.send('ping');
 var ipc = require('ipc');
 ipc.on('ping', function() {
   ipc.sendToHost('pong');
-})
+});
 ```
 
 ### crashed
 
 Fired when the renderer process is crashed.
+
+### gpu-crashed
+
+Fired when the gpu process is crashed.
+
+### plugin-crashed
+
+* `name` String
+* `version` String
+
+Fired when a plugin process is crashed.
 
 ### destroyed
 

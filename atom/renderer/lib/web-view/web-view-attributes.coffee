@@ -28,7 +28,7 @@ class WebViewAttribute
   # Changes the attribute's value without triggering its mutation handler.
   setValueIgnoreMutation: (value) ->
     @ignoreMutation = true
-    @webViewImpl.webviewNode.setAttribute(@name, value || '')
+    @setValue value
     @ignoreMutation = false
 
   # Defines this attribute as a property on the webview node.
@@ -72,7 +72,7 @@ class AutosizeDimensionAttribute extends WebViewAttribute
 
   handleMutation: (oldValue, newValue) ->
     return unless @webViewImpl.guestInstanceId
-    guestViewInternal.setAutoSize @webViewImpl.guestInstanceId,
+    guestViewInternal.setSize @webViewImpl.guestInstanceId,
       enableAutoSize: @webViewImpl.attributes[webViewConstants.ATTRIBUTE_AUTOSIZE].getValue()
       min:
         width: parseInt @webViewImpl.attributes[webViewConstants.ATTRIBUTE_MINWIDTH].getValue() || 0
@@ -119,6 +119,14 @@ class SrcAttribute extends WebViewAttribute
     else
       ''
 
+  setValueIgnoreMutation: (value) ->
+    WebViewAttribute::setValueIgnoreMutation value
+    # takeRecords() is needed to clear queued up src mutations. Without it, it
+    # is possible for this change to get picked up asyncronously by src's
+    # mutation observer |observer|, and then get handled even though we do not
+    # want to handle this mutation.
+    @observer.takeRecords()
+
   handleMutation: (oldValue, newValue) ->
     # Once we have navigated, we don't allow clearing the src attribute.
     # Once <webview> enters a navigated state, it cannot return to a
@@ -138,7 +146,10 @@ class SrcAttribute extends WebViewAttribute
   setupMutationObserver: ->
     @observer = new MutationObserver (mutations) =>
       for mutation in mutations
-        @handleMutation mutation.oldValue, @getValue()
+        oldValue = mutation.oldValue
+        newValue = @getValue()
+        return if oldValue isnt newValue
+        @handleMutation oldValue, newValue
     params =
       attributes: true,
       attributeOldValue: true,
@@ -160,10 +171,10 @@ class SrcAttribute extends WebViewAttribute
     # Navigate to |this.src|.
     opts = {}
     httpreferrer = @webViewImpl.attributes[webViewConstants.ATTRIBUTE_HTTPREFERRER].getValue()
-    if httpreferrer then opts.httpreferrer = httpreferrer
+    if httpreferrer then opts.httpReferrer = httpreferrer
 
     useragent = @webViewImpl.attributes[webViewConstants.ATTRIBUTE_USERAGENT].getValue()
-    if useragent then opts.useragent = useragent
+    if useragent then opts.userAgent = useragent
 
     guestContents = remote.getGuestWebContents(@webViewImpl.guestInstanceId)
     guestContents.loadUrl @getValue(), opts

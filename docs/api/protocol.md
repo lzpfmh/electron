@@ -7,8 +7,8 @@ An example of implementing a protocol that has the same effect with the
 `file://` protocol:
 
 ```javascript
-var app = require('app'),
-    path = require('path');
+var app = require('app');
+var path = require('path');
 
 app.on('ready', function() {
     var protocol = require('protocol');
@@ -38,6 +38,12 @@ response you would like to send.
 * `scheme` String
 
 Unregisters the custom protocol of `scheme`.
+
+## protocol.registerStandardSchemes(value)
+
+* `value` Array
+
+`value` is an array of custom schemes to be registered to the standard.
 
 ## protocol.isHandledProtocol(scheme)
 
@@ -84,12 +90,21 @@ Create a request job which sends a string as response.
 
 Create a request job which sends a buffer as response.
 
+## Class: protocol.RequestHttpJob(options)
+
+* `options` Object
+  * `url` String
+  * `method` String - Default is `GET`
+  * `referrer` String
+
+Send a request to `url` and pipe the response back.
+
 ## Class: protocol.RequestErrorJob(code)
 
 * `code` Integer
 
 Create a request job which sets appropriate network error message to console.
-Default message is `net::ERR_NOT_IMPLEMENTED`. Code should be in the following 
+Default message is `net::ERR_NOT_IMPLEMENTED`. Code should be in the following
 range.
 
 * Ranges:

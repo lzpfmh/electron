@@ -54,7 +54,7 @@ describe '<webview> tag', ->
           assert.equal e.message, 'function'
           done()
         webview.addEventListener 'console-message', listener2
-        webview.src = "file://#{fixtures}/pages/native-module.html"
+        webview.reload()
       webview.addEventListener 'did-finish-load', listener
       webview.setAttribute 'nodeintegration', 'on'
       webview.src = "file://#{fixtures}/pages/native-module.html"
@@ -204,4 +204,19 @@ describe '<webview> tag', ->
       webview.addEventListener 'did-finish-load', listener2
       webview.setAttribute 'nodeintegration', 'on'
       webview.src = "file://#{fixtures}/pages/beforeunload-false.html"
+      document.body.appendChild webview
+
+  describe '<webview>.clearHistory()', ->
+    it 'should clear the navigation history', (done) ->
+      listener = (e) ->
+        assert.equal e.channel, 'history'
+        assert.equal e.args[0], 2
+        assert webview.canGoBack()
+        webview.clearHistory()
+        assert not webview.canGoBack()
+        webview.removeEventListener 'ipc-message', listener
+        done()
+      webview.addEventListener 'ipc-message', listener
+      webview.setAttribute 'nodeintegration', 'on'      
+      webview.src = "file://#{fixtures}/pages/history.html"
       document.body.appendChild webview

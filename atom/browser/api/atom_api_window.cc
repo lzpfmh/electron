@@ -4,6 +4,7 @@
 
 #include "atom/browser/api/atom_api_window.h"
 
+#include "atom/browser/api/atom_api_menu.h"
 #include "atom/browser/api/atom_api_web_contents.h"
 #include "atom/browser/browser.h"
 #include "atom/browser/native_window.h"
@@ -18,32 +19,6 @@
 #include "ui/gfx/geometry/rect.h"
 
 #include "atom/common/node_includes.h"
-
-namespace {
-
-struct PrintSettings {
-  bool silent;
-  bool print_background;
-};
-
-}  // namespace
-
-namespace mate {
-
-template<>
-struct Converter<PrintSettings> {
-  static bool FromV8(v8::Isolate* isolate, v8::Handle<v8::Value> val,
-                     PrintSettings* out) {
-    mate::Dictionary dict;
-    if (!ConvertFromV8(isolate, val, &dict))
-      return false;
-    dict.Get("silent", &(out->silent));
-    dict.Get("printBackground", &(out->print_background));
-    return true;
-  }
-};
-
-}  // namespace mate
 
 namespace atom {
 
@@ -63,8 +38,17 @@ void OnCapturePageDone(
 }  // namespace
 
 
-Window::Window(const mate::Dictionary& options)
-    : window_(NativeWindow::Create(options)) {
+Window::Window(v8::Isolate* isolate, const mate::Dictionary& options) {
+  // Creates the WebContents used by BrowserWindow.
+  mate::Dictionary web_contents_options(isolate, v8::Object::New(isolate));
+  auto web_contents = WebContents::Create(isolate, web_contents_options);
+  web_contents_.Reset(isolate, web_contents.ToV8());
+  api_web_contents_ = web_contents.get();
+
+  // Creates BrowserWindow.
+  window_.reset(NativeWindow::Create(web_contents->managed_web_contents(),
+                                     options));
+  web_contents->SetOwnerWindow(window_.get());
   window_->InitFromOptions(options);
   window_->AddObserver(this);
 }
@@ -79,25 +63,21 @@ void Window::OnPageTitleUpdated(bool* prevent_default,
   *prevent_default = Emit("page-title-updated", title);
 }
 
-void Window::WillCreatePopupWindow(const base::string16& frame_name,
-                                   const GURL& target_url,
-                                   const std::string& partition_id,
-                                   WindowOpenDisposition disposition) {
-  Emit("-new-window", target_url, frame_name, static_cast<int>(disposition));
-}
-
-void Window::WillNavigate(bool* prevent_default, const GURL& url) {
-  *prevent_default = Emit("-will-navigate", url);
-}
-
 void Window::WillCloseWindow(bool* prevent_default) {
   *prevent_default = Emit("close");
 }
 
 void Window::OnWindowClosed() {
-  Emit("closed");
+  if (api_web_contents_) {
+    api_web_contents_->DestroyWebContents();
+    api_web_contents_ = nullptr;
+    web_contents_.Reset();
+  }
 
+  RemoveFromWeakMap();
   window_->RemoveObserver(this);
+
+  Emit("closed");
 }
 
 void Window::OnWindowBlur() {
@@ -124,12 +104,32 @@ void Window::OnWindowRestore() {
   Emit("restore");
 }
 
+void Window::OnWindowResize() {
+  Emit("resize");
+}
+
+void Window::OnWindowMove() {
+  Emit("move");
+}
+
+void Window::OnWindowMoved() {
+  Emit("moved");
+}
+
 void Window::OnWindowEnterFullScreen() {
   Emit("enter-full-screen");
 }
 
 void Window::OnWindowLeaveFullScreen() {
   Emit("leave-full-screen");
+}
+
+void Window::OnWindowEnterHtmlFullScreen() {
+  Emit("enter-html-full-screen");
+}
+
+void Window::OnWindowLeaveHtmlFullScreen() {
+  Emit("leave-html-full-screen");
 }
 
 void Window::OnRendererUnresponsive() {
@@ -144,19 +144,41 @@ void Window::OnDevToolsFocus() {
   Emit("devtools-focused");
 }
 
+void Window::OnDevToolsOpened() {
+  Emit("devtools-opened");
+
+  v8::Locker locker(isolate());
+  v8::HandleScope handle_scope(isolate());
+  auto handle = WebContents::CreateFrom(
+      isolate(), api_web_contents_->GetDevToolsWebContents());
+  devtools_web_contents_.Reset(isolate(), handle.ToV8());
+}
+
+void Window::OnDevToolsClosed() {
+  Emit("devtools-closed");
+
+  v8::Locker locker(isolate());
+  v8::HandleScope handle_scope(isolate());
+  devtools_web_contents_.Reset();
+}
+
+void Window::OnExecuteWindowsCommand(const std::string& command_name) {
+  Emit("app-command", command_name);
+}
+
 // static
 mate::Wrappable* Window::New(v8::Isolate* isolate,
                              const mate::Dictionary& options) {
   if (!Browser::Get()->is_ready()) {
-    node::ThrowError("Cannot create BrowserWindow before app is ready");
+    node::ThrowError(isolate,
+                     "Cannot create BrowserWindow before app is ready");
     return nullptr;
   }
-  return new Window(options);
+  return new Window(isolate, options);
 }
 
 void Window::Destroy() {
-  window_->DestroyWebContents();
-  window_->CloseImmediately();
+  window_->CloseContents(nullptr);
 }
 
 void Window::Close() {
@@ -335,22 +357,6 @@ bool Window::IsKiosk() {
   return window_->IsKiosk();
 }
 
-void Window::OpenDevTools(bool can_dock) {
-  window_->OpenDevTools(can_dock);
-}
-
-void Window::CloseDevTools() {
-  window_->CloseDevTools();
-}
-
-bool Window::IsDevToolsOpened() {
-  return window_->IsDevToolsOpened();
-}
-
-void Window::InspectElement(int x, int y) {
-  window_->InspectElement(x, y);
-}
-
 void Window::FocusOnWebView() {
   window_->FocusOnWebView();
 }
@@ -394,16 +400,6 @@ void Window::CapturePage(mate::Arguments* args) {
       rect, base::Bind(&OnCapturePageDone, args->isolate(), callback));
 }
 
-void Window::Print(mate::Arguments* args) {
-  PrintSettings settings = { false, false };;
-  if (args->Length() == 1 && !args->GetNext(&settings)) {
-    args->ThrowError();
-    return;
-  }
-
-  window_->Print(settings.silent, settings.print_background);
-}
-
 void Window::SetProgressBar(double progress) {
   window_->SetProgressBar(progress);
 }
@@ -411,6 +407,22 @@ void Window::SetProgressBar(double progress) {
 void Window::SetOverlayIcon(const gfx::Image& overlay,
                             const std::string& description) {
   window_->SetOverlayIcon(overlay, description);
+}
+
+void Window::SetMenu(v8::Isolate* isolate, v8::Local<v8::Value> value) {
+  mate::Handle<Menu> menu;
+  if (value->IsObject() &&
+      mate::V8ToString(value->ToObject()->GetConstructorName()) == "Menu" &&
+      mate::ConvertFromV8(isolate, value, &menu)) {
+    menu_.Reset(isolate, menu.ToV8());
+    window_->SetMenu(menu->model());
+  } else if (value->IsNull()) {
+    menu_.Reset();
+    window_->SetMenu(nullptr);
+  } else {
+    isolate->ThrowException(v8::Exception::TypeError(
+        mate::StringToV8(isolate, "Invalid Menu")));
+  }
 }
 
 void Window::SetAutoHideMenuBar(bool auto_hide) {
@@ -443,18 +455,27 @@ bool Window::IsVisibleOnAllWorkspaces() {
   return window_->IsVisibleOnAllWorkspaces();
 }
 
-mate::Handle<WebContents> Window::GetWebContents(v8::Isolate* isolate) const {
-  return WebContents::CreateFrom(isolate, window_->GetWebContents());
+int32_t Window::ID() const {
+  return weak_map_id();
 }
 
-mate::Handle<WebContents> Window::GetDevToolsWebContents(
-    v8::Isolate* isolate) const {
-  return WebContents::CreateFrom(isolate, window_->GetDevToolsWebContents());
+v8::Local<v8::Value> Window::WebContents(v8::Isolate* isolate) {
+  if (web_contents_.IsEmpty())
+    return v8::Null(isolate);
+  else
+    return v8::Local<v8::Value>::New(isolate, web_contents_);
+}
+
+v8::Local<v8::Value> Window::DevToolsWebContents(v8::Isolate* isolate) {
+  if (devtools_web_contents_.IsEmpty())
+    return v8::Null(isolate);
+  else
+    return v8::Local<v8::Value>::New(isolate, devtools_web_contents_);
 }
 
 // static
 void Window::BuildPrototype(v8::Isolate* isolate,
-                            v8::Handle<v8::ObjectTemplate> prototype) {
+                            v8::Local<v8::ObjectTemplate> prototype) {
   mate::ObjectTemplateBuilder(isolate, prototype)
       .SetMethod("destroy", &Window::Destroy)
       .SetMethod("close", &Window::Close)
@@ -500,17 +521,13 @@ void Window::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("getRepresentedFilename", &Window::GetRepresentedFilename)
       .SetMethod("setDocumentEdited", &Window::SetDocumentEdited)
       .SetMethod("isDocumentEdited", &Window::IsDocumentEdited)
-      .SetMethod("_openDevTools", &Window::OpenDevTools)
-      .SetMethod("closeDevTools", &Window::CloseDevTools)
-      .SetMethod("isDevToolsOpened", &Window::IsDevToolsOpened)
-      .SetMethod("inspectElement", &Window::InspectElement)
       .SetMethod("focusOnWebView", &Window::FocusOnWebView)
       .SetMethod("blurWebView", &Window::BlurWebView)
       .SetMethod("isWebViewFocused", &Window::IsWebViewFocused)
       .SetMethod("capturePage", &Window::CapturePage)
-      .SetMethod("print", &Window::Print)
       .SetMethod("setProgressBar", &Window::SetProgressBar)
       .SetMethod("setOverlayIcon", &Window::SetOverlayIcon)
+      .SetMethod("setMenu", &Window::SetMenu)
       .SetMethod("setAutoHideMenuBar", &Window::SetAutoHideMenuBar)
       .SetMethod("isMenuBarAutoHide", &Window::IsMenuBarAutoHide)
       .SetMethod("setMenuBarVisibility", &Window::SetMenuBarVisibility)
@@ -523,8 +540,9 @@ void Window::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("showDefinitionForSelection",
                  &Window::ShowDefinitionForSelection)
 #endif
-      .SetMethod("_getWebContents", &Window::GetWebContents)
-      .SetMethod("_getDevToolsWebContents", &Window::GetDevToolsWebContents);
+      .SetProperty("id", &Window::ID)
+      .SetProperty("webContents", &Window::WebContents)
+      .SetProperty("devToolsWebContents", &Window::DevToolsWebContents);
 }
 
 }  // namespace api
@@ -534,14 +552,21 @@ void Window::BuildPrototype(v8::Isolate* isolate,
 
 namespace {
 
-void Initialize(v8::Handle<v8::Object> exports, v8::Handle<v8::Value> unused,
-                v8::Handle<v8::Context> context, void* priv) {
-  using atom::api::Window;
+using atom::api::Window;
+
+void Initialize(v8::Local<v8::Object> exports, v8::Local<v8::Value> unused,
+                v8::Local<v8::Context> context, void* priv) {
   v8::Isolate* isolate = context->GetIsolate();
   v8::Local<v8::Function> constructor = mate::CreateConstructor<Window>(
       isolate, "BrowserWindow", base::Bind(&Window::New));
+  mate::Dictionary browser_window(isolate, constructor);
+  browser_window.SetMethod("fromId",
+                           &mate::TrackableObject<Window>::FromWeakMapID);
+  browser_window.SetMethod("getAllWindows",
+                           &mate::TrackableObject<Window>::GetAll);
+
   mate::Dictionary dict(isolate, exports);
-  dict.Set("BrowserWindow", static_cast<v8::Handle<v8::Value>>(constructor));
+  dict.Set("BrowserWindow", browser_window);
 }
 
 }  // namespace

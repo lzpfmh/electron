@@ -1,16 +1,18 @@
 # global-shortcut
 
 The `global-shortcut` module can register/unregister a global keyboard shortcut
-in operating system, so that you can custom the operations for various shortcuts.
-Note that it is global, even the app does not get focused, it still works.
+in operating system, so that you can customize the operations for various shortcuts.
+Note that the shortcut is global, even if the app does not get focused, it will still work.
 
 ```javascript
 var globalShortcut = require('global-shortcut');
 
 // Register a 'ctrl+x' shortcut listener.
 var ret = globalShortcut.register('ctrl+x', function() { console.log('ctrl+x is pressed'); })
-if (!ret)
-  console.log('registerion fails');
+
+if (!ret) {
+  console.log('registration failed');
+}
 
 // Check whether a shortcut is registered.
 console.log(globalShortcut.isRegistered('ctrl+x'));
@@ -34,7 +36,7 @@ the registered shortcut is pressed by user.
 
 * `accelerator` [Accelerator](accelerator.md)
 
-Returns whether shortcut of `accelerator` is registered.
+Returns `true` or `false` depending on if the shortcut `accelerator` is registered.
 
 ## globalShortcut.unregister(accelerator)
 

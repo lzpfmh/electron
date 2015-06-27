@@ -62,6 +62,7 @@ window.open = (url, frameName='', features='') ->
 window.alert = (message, title='') ->
   dialog = remote.require 'dialog'
   buttons = ['OK']
+  message = message.toString()
   dialog.showMessageBox remote.getCurrentWindow(), {message, title, buttons}
 
 # And the confirm().
@@ -75,9 +76,10 @@ window.prompt = ->
   throw new Error('prompt() is and will not be supported.')
 
 # Simple implementation of postMessage.
-window.opener =
-  postMessage: (message, targetOrigin='*') ->
-    ipc.send 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_OPENER_POSTMESSAGE', message, targetOrigin
+unless process.guestInstanceId?
+  window.opener =
+    postMessage: (message, targetOrigin='*') ->
+      ipc.send 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_OPENER_POSTMESSAGE', message, targetOrigin
 
 ipc.on 'ATOM_SHELL_GUEST_WINDOW_POSTMESSAGE', (message, targetOrigin) ->
   window.postMessage message, targetOrigin
@@ -85,6 +87,13 @@ ipc.on 'ATOM_SHELL_GUEST_WINDOW_POSTMESSAGE', (message, targetOrigin) ->
 # Forward history operations to browser.
 sendHistoryOperation = (args...) ->
   ipc.send 'ATOM_SHELL_NAVIGATION_CONTROLLER', args...
+
+getHistoryOperation = (args...) ->
+  ipc.sendSync 'ATOM_SHELL_SYNC_NAVIGATION_CONTROLLER', args...
+
 window.history.back = -> sendHistoryOperation 'goBack'
 window.history.forward = -> sendHistoryOperation 'goForward'
 window.history.go = (offset) -> sendHistoryOperation 'goToOffset', offset
+Object.defineProperty window.history, 'length',
+  get: ->
+    getHistoryOperation 'length'

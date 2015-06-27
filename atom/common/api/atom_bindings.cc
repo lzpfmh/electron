@@ -26,6 +26,11 @@ void Crash() {
   static_cast<DummyClass*>(NULL)->crash = true;
 }
 
+void Hang() {
+  for (;;)
+    base::PlatformThread::Sleep(base::TimeDelta::FromSeconds(1));
+}
+
 // Called when there is a fatal error in V8, we just crash the process here so
 // we can get the stack trace.
 void FatalErrorCallback(const char* location, const char* message) {
@@ -49,11 +54,12 @@ AtomBindings::~AtomBindings() {
 }
 
 void AtomBindings::BindTo(v8::Isolate* isolate,
-                          v8::Handle<v8::Object> process) {
+                          v8::Local<v8::Object> process) {
   v8::V8::SetFatalErrorHandler(FatalErrorCallback);
 
   mate::Dictionary dict(isolate, process);
   dict.SetMethod("crash", &Crash);
+  dict.SetMethod("hang", &Hang);
   dict.SetMethod("log", &Log);
   dict.SetMethod("activateUvLoop",
       base::Bind(&AtomBindings::ActivateUVLoop, base::Unretained(this)));

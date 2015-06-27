@@ -45,6 +45,7 @@ extern const char kTransparent[];
 extern const char kType[];
 extern const char kDisableAutoHideCursor[];
 extern const char kStandardWindow[];
+extern const char kClientCertificate[];
 
 extern const char kExperimentalFeatures[];
 extern const char kExperimentalCanvasFeatures[];
@@ -52,8 +53,10 @@ extern const char kSubpixelFontScaling[];
 extern const char kOverlayScrollbars[];
 extern const char kOverlayFullscreenVideo[];
 extern const char kSharedWorker[];
+extern const char kPageVisibility[];
 
 extern const char kDisableHttpCache[];
+extern const char kRegisterStandardSchemes[];
 
 }  // namespace switches
 

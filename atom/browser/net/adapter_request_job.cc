@@ -4,8 +4,10 @@
 
 #include "atom/browser/net/adapter_request_job.h"
 
+#include "atom/browser/atom_browser_context.h"
 #include "base/threading/sequenced_worker_pool.h"
 #include "atom/browser/net/url_request_buffer_job.h"
+#include "atom/browser/net/url_request_fetch_job.h"
 #include "atom/browser/net/url_request_string_job.h"
 #include "atom/browser/net/asar/url_request_asar_job.h"
 #include "atom/common/asar/asar_util.h"
@@ -66,13 +68,19 @@ bool AdapterRequestJob::GetCharset(std::string* charset) {
   return real_job_->GetCharset(charset);
 }
 
+void AdapterRequestJob::GetResponseInfo(net::HttpResponseInfo* info) {
+  real_job_->GetResponseInfo(info);
+}
+
+int AdapterRequestJob::GetResponseCode() const {
+  return real_job_->GetResponseCode();
+}
+
 base::WeakPtr<AdapterRequestJob> AdapterRequestJob::GetWeakPtr() {
   return weak_factory_.GetWeakPtr();
 }
 
 void AdapterRequestJob::CreateErrorJobAndStart(int error_code) {
-  DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::IO));
-
   real_job_ = new net::URLRequestErrorJob(
       request(), network_delegate(), error_code);
   real_job_->Start();
@@ -81,25 +89,21 @@ void AdapterRequestJob::CreateErrorJobAndStart(int error_code) {
 void AdapterRequestJob::CreateStringJobAndStart(const std::string& mime_type,
                                                 const std::string& charset,
                                                 const std::string& data) {
-  DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::IO));
-
   real_job_ = new URLRequestStringJob(
       request(), network_delegate(), mime_type, charset, data);
   real_job_->Start();
 }
 
-void AdapterRequestJob::CreateBufferJobAndStart(const std::string& mime_type,
-                                                const std::string& charset,
-                                                v8::Local<v8::Object> buffer) {
-  DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::IO));
-
+void AdapterRequestJob::CreateBufferJobAndStart(
+    const std::string& mime_type,
+    const std::string& charset,
+    scoped_refptr<base::RefCountedBytes> data) {
   real_job_ = new URLRequestBufferJob(
-      request(), network_delegate(), mime_type, charset, buffer);
+      request(), network_delegate(), mime_type, charset, data);
   real_job_->Start();
 }
 
 void AdapterRequestJob::CreateFileJobAndStart(const base::FilePath& path) {
-  DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::IO));
   real_job_ = asar::CreateJobFromPath(
       path,
       request(),
@@ -110,9 +114,22 @@ void AdapterRequestJob::CreateFileJobAndStart(const base::FilePath& path) {
   real_job_->Start();
 }
 
+void AdapterRequestJob::CreateHttpJobAndStart(
+    AtomBrowserContext* browser_context,
+    const GURL& url,
+    const std::string& method,
+    const std::string& referrer) {
+  if (!url.is_valid()) {
+    CreateErrorJobAndStart(net::ERR_INVALID_URL);
+    return;
+  }
+
+  real_job_ = new URLRequestFetchJob(browser_context, request(),
+                                     network_delegate(), url, method, referrer);
+  real_job_->Start();
+}
+
 void AdapterRequestJob::CreateJobFromProtocolHandlerAndStart() {
-  DCHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::IO));
-  DCHECK(protocol_handler_);
   real_job_ = protocol_handler_->MaybeCreateJob(request(),
                                                 network_delegate());
   if (!real_job_.get())

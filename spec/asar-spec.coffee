@@ -1,6 +1,7 @@
-assert = require 'assert'
-fs     = require 'fs'
-path   = require 'path'
+assert        = require 'assert'
+child_process = require 'child_process'
+fs            = require 'fs'
+path          = require 'path'
 
 describe 'asar package', ->
   fixtures = path.join __dirname, 'fixtures'
@@ -43,6 +44,10 @@ describe 'asar package', ->
           assert async
           assert /ENOENT/.test e
         async = true
+
+      it 'reads a normal file with unpacked files', ->
+        p = path.join fixtures, 'asar', 'unpack.asar', 'a.txt'
+        assert.equal fs.readFileSync(p).toString(), 'a\n'
 
     describe 'fs.readFile', ->
       it 'reads a normal file', (done) ->
@@ -371,6 +376,21 @@ describe 'asar package', ->
           done()
         child.send file
 
+    describe 'internalModuleReadFile', ->
+      internalModuleReadFile = process.binding('fs').internalModuleReadFile
+
+      it 'read a normal file', ->
+        file1 = path.join fixtures, 'asar', 'a.asar', 'file1'
+        assert.equal internalModuleReadFile(file1).toString(), 'file1\n'
+        file2 = path.join fixtures, 'asar', 'a.asar', 'file2'
+        assert.equal internalModuleReadFile(file2).toString(), 'file2\n'
+        file3 = path.join fixtures, 'asar', 'a.asar', 'file3'
+        assert.equal internalModuleReadFile(file3).toString(), 'file3\n'
+
+      it 'reads a normal file with unpacked files', ->
+        p = path.join fixtures, 'asar', 'unpack.asar', 'a.txt'
+        assert.equal internalModuleReadFile(p).toString(), 'a\n'
+
   describe 'asar protocol', ->
     url = require 'url'
     remote = require 'remote'
@@ -442,6 +462,13 @@ describe 'asar package', ->
       file = path.join fixtures, 'asar', 'a.asar'
       stats = originalFs.statSync file
       assert stats.isFile()
+
+    it 'is available in forked scripts', (done) ->
+      child = child_process.fork path.join(fixtures, 'module', 'original-fs.js')
+      child.on 'message', (msg) ->
+        assert.equal msg, 'object'
+        done()
+      child.send 'message'
 
   describe 'graceful-fs module', ->
     gfs = require 'graceful-fs'

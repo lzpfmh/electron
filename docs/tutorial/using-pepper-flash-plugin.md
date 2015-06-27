@@ -23,8 +23,9 @@ var mainWindow = null;
 
 // Quit when all windows are closed.
 app.on('window-all-closed', function() {
-  if (process.platform != 'darwin')
+  if (process.platform != 'darwin') {
     app.quit();
+  }
 });
 
 // Specify flash path.
@@ -40,8 +41,9 @@ app.on('ready', function() {
   mainWindow = new BrowserWindow({
     'width': 800,
     'height': 600,
-    'web-preferences':
+    'web-preferences': {
       'plugins': true
+    }
   });
   mainWindow.loadUrl('file://' + __dirname + '/index.html');
   // Something else

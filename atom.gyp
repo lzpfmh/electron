@@ -4,7 +4,7 @@
     'product_name%': 'Electron',
     'company_name%': 'GitHub, Inc',
     'company_abbr%': 'github',
-    'version%': '0.26.0',
+    'version%': '0.28.3',
 
     'atom_source_root': '<!(["python", "tools/atom_source_root.py"])',
   },
@@ -45,6 +45,7 @@
           'dependencies': [
             '<(project_name)_framework',
             '<(project_name)_helper',
+            'vendor/breakpad/breakpad.gyp:dump_syms',
           ],
           'xcode_settings': {
             'ATOM_BUNDLE_ID': 'com.<(company_abbr).<(project_name)',
@@ -124,7 +125,9 @@
                       '<@(libchromiumcontent_shared_v8_libraries)',
                     ],
                   }, {
-                    'copied_libraries': [],
+                    'copied_libraries': [
+                      '<(libchromiumcontent_dir)/pdf.dll',
+                    ],
                   }],
                 ],
               },
@@ -273,7 +276,8 @@
         }],  # OS=="win"
         ['OS=="mac"', {
           'dependencies': [
-            'vendor/breakpad/breakpad.gyp:breakpad',
+            'vendor/crashpad/client/client.gyp:crashpad_client',
+            'vendor/crashpad/handler/handler.gyp:crashpad_handler',
           ],
         }],  # OS=="mac"
         ['OS=="linux"', {
@@ -428,8 +432,7 @@
             {
               'destination': '<(PRODUCT_DIR)/<(product_name) Framework.framework/Versions/A/Resources',
               'files': [
-                '<(PRODUCT_DIR)/Inspector',
-                '<(PRODUCT_DIR)/crash_report_sender.app',
+                '<(PRODUCT_DIR)/crashpad_handler',
               ],
             },
           ],
@@ -450,7 +453,6 @@
                 'tools/mac/create-framework-subdir-symlinks.sh',
                 '<(product_name) Framework',
                 'Libraries',
-                'Frameworks',
               ],
             },
           ],

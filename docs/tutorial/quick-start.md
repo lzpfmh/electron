@@ -82,8 +82,9 @@ var mainWindow = null;
 
 // Quit when all windows are closed.
 app.on('window-all-closed', function() {
-  if (process.platform != 'darwin')
+  if (process.platform != 'darwin') {
     app.quit();
+  }
 });
 
 // This method will be called when Electron has done everything
@@ -94,6 +95,9 @@ app.on('ready', function() {
 
   // and load the index.html of the app.
   mainWindow.loadUrl('file://' + __dirname + '/index.html');
+
+  // Open the devtools.
+  mainWindow.openDevTools();
 
   // Emitted when the window is closed.
   mainWindow.on('closed', function() {
@@ -130,7 +134,7 @@ Electron binary to execute your app directly.
 
 On Windows:
 
-```cmd
+```bash
 $ .\electron\electron.exe your-app\
 ```
 

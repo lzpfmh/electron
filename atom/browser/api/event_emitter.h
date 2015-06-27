@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "atom/common/event_emitter_caller.h"
 #include "native_mate/wrappable.h"
 
 namespace content {
@@ -22,10 +23,7 @@ namespace mate {
 // Provide helperers to emit event in JavaScript.
 class EventEmitter : public Wrappable {
  public:
-  typedef std::vector<v8::Handle<v8::Value>> ValueArray;
-
- protected:
-  EventEmitter();
+  typedef std::vector<v8::Local<v8::Value>> ValueArray;
 
   // this.emit(name, new Event(), args...);
   template<typename... Args>
@@ -39,21 +37,21 @@ class EventEmitter : public Wrappable {
                       content::WebContents* sender,
                       IPC::Message* message,
                       const Args&... args) {
-    v8::Isolate* isolate = v8::Isolate::GetCurrent();
-    v8::Locker locker(isolate);
-    v8::HandleScope handle_scope(isolate);
-
-    ValueArray converted = { ConvertToV8(isolate, args)... };
-    return CallEmit(isolate, name, sender, message, converted);
+    v8::Locker locker(isolate());
+    v8::HandleScope handle_scope(isolate());
+    v8::Local<v8::Object> event = CreateJSEvent(isolate(), sender, message);
+    EmitEvent(isolate(), GetWrapper(isolate()), name, event, args...);
+    return event->Get(
+        StringToV8(isolate(), "defaultPrevented"))->BooleanValue();
   }
 
+ protected:
+  EventEmitter();
+
  private:
-  // Lower level implementations.
-  bool CallEmit(v8::Isolate* isolate,
-                const base::StringPiece& name,
-                content::WebContents* sender,
-                IPC::Message* message,
-                ValueArray args);
+  v8::Local<v8::Object> CreateJSEvent(v8::Isolate* isolate,
+                                      content::WebContents* sender,
+                                      IPC::Message* message);
 
   DISALLOW_COPY_AND_ASSIGN(EventEmitter);
 };

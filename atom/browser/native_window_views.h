@@ -28,9 +28,9 @@ class NativeWindowViews : public NativeWindow,
                           public views::WidgetDelegateView,
                           public views::WidgetObserver {
  public:
-  explicit NativeWindowViews(content::WebContents* web_contents,
-                            const mate::Dictionary& options);
-  virtual ~NativeWindowViews();
+  NativeWindowViews(brightray::InspectableWebContents* inspectable_web_contents,
+                    const mate::Dictionary& options);
+  ~NativeWindowViews() override;
 
   // NativeWindow:
   void Close() override;
@@ -93,6 +93,8 @@ class NativeWindowViews : public NativeWindow,
   // views::WidgetObserver:
   void OnWidgetActivationChanged(
       views::Widget* widget, bool active) override;
+  void OnWidgetBoundsChanged(
+      views::Widget* widget, const gfx::Rect& bounds) override;
 
   // views::WidgetDelegate:
   void DeleteDelegate() override;
@@ -113,19 +115,19 @@ class NativeWindowViews : public NativeWindow,
   views::ClientView* CreateClientView(views::Widget* widget) override;
   views::NonClientFrameView* CreateNonClientFrameView(
       views::Widget* widget) override;
+  void OnWidgetMove() override;
 #if defined(OS_WIN)
   bool ExecuteWindowsCommand(int command_id) override;
 #endif
 
-  // brightray::InspectableWebContentsDelegate:
+  // brightray::InspectableWebContentsViewDelegate:
   gfx::ImageSkia GetDevToolsWindowIcon() override;
 #if defined(USE_X11)
   void GetDevToolsWindowWMClass(
       std::string* name, std::string* class_name) override;
 #endif
 
-  // content::WebContentsDelegate:
-  void HandleMouseDown() override;
+  // NativeWindow:
   void HandleKeyboardEvent(
       content::WebContents*,
       const content::NativeWebKeyboardEvent& event) override;
@@ -173,6 +175,7 @@ class NativeWindowViews : public NativeWindow,
   std::string title_;
   gfx::Size minimum_size_;
   gfx::Size maximum_size_;
+  gfx::Size widget_size_;
 
   scoped_ptr<SkRegion> draggable_region_;
 
