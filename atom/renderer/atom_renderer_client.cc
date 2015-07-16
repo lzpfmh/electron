@@ -27,6 +27,10 @@
 
 #include "atom/common/node_includes.h"
 
+#if defined(OS_WIN)
+#include <shlobj.h>
+#endif
+
 namespace atom {
 
 namespace {
@@ -102,6 +106,15 @@ void AtomRendererClient::WebKitInitialized() {
 
 void AtomRendererClient::RenderThreadStarted() {
   content::RenderThread::Get()->AddObserver(this);
+
+#if defined(OS_WIN)
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  base::string16 app_id =
+      command_line->GetSwitchValueNative(switches::kAppUserModelId);
+  if (!app_id.empty()) {
+    SetCurrentProcessExplicitAppUserModelID(app_id.c_str());
+  }
+#endif
 }
 
 void AtomRendererClient::RenderFrameCreated(

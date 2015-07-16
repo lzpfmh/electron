@@ -22,7 +22,9 @@ class NativeWindow;
 enum MessageBoxType {
   MESSAGE_BOX_TYPE_NONE = 0,
   MESSAGE_BOX_TYPE_INFORMATION,
-  MESSAGE_BOX_TYPE_WARNING
+  MESSAGE_BOX_TYPE_WARNING,
+  MESSAGE_BOX_TYPE_ERROR,
+  MESSAGE_BOX_TYPE_QUESTION,
 };
 
 typedef base::Callback<void(int code)> MessageBoxCallback;
@@ -30,6 +32,7 @@ typedef base::Callback<void(int code)> MessageBoxCallback;
 int ShowMessageBox(NativeWindow* parent_window,
                    MessageBoxType type,
                    const std::vector<std::string>& buttons,
+                   int cancel_id,
                    const std::string& title,
                    const std::string& message,
                    const std::string& detail,
@@ -38,6 +41,7 @@ int ShowMessageBox(NativeWindow* parent_window,
 void ShowMessageBox(NativeWindow* parent_window,
                     MessageBoxType type,
                     const std::vector<std::string>& buttons,
+                    int cancel_id,
                     const std::string& title,
                     const std::string& message,
                     const std::string& detail,

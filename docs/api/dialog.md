@@ -70,12 +70,17 @@ will be passed via `callback(filename)`
 
 * `browserWindow` BrowserWindow
 * `options` Object
-  * `type` String - Can be `"none"`, `"info"` or `"warning"`
+  * `type` String - Can be `"none"`, `"info"`, `"error"`, `"question"` or `"warning"`
   * `buttons` Array - Array of texts for buttons
   * `title` String - Title of the message box, some platforms will not show it
   * `message` String - Content of the message box
   * `detail` String - Extra information of the message
   * `icon` [NativeImage](native-image.md)
+  * `cancelId` Integer - The value will be returned when user cancels the dialog
+    instead of clicking the buttons of the dialog. By default it is the index
+    of the buttons that have "cancel" or "no" as label, or 0 if there is no such
+    buttons. On OS X and Windows the index of "Cancel" button will always be
+    used as `cancelId`, not matter whether it is already specified.
 * `callback` Function
 
 Shows a message box, it will block until the message box is closed. It returns

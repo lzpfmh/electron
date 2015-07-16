@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/atom/electron.svg?branch=master)](https://travis-ci.org/atom/electron)
 [![devDependency Status](https://david-dm.org/atom/electron/dev-status.svg)](https://david-dm.org/atom/electron#info=devDependencies)
+[![Join the Electron Community on Slack](http://atom-slack.herokuapp.com/badge.svg)](http://atom-slack.herokuapp.com/)
 
 :zap: *formerly known as Atom Shell* :zap:
 
@@ -12,6 +13,9 @@ editor](https://github.com/atom/atom).
 
 Follow [@ElectronJS](https://twitter.com/electronjs) on Twitter for important
 announcements.
+
+This project adheres to the [Open Code of Conduct][code-of-conduct]. By participating, you are expected to uphold this code.
+[code-of-conduct]: http://todogroup.org/opencodeofconduct/#Electron/opensource@github.com
 
 ## Downloads
 

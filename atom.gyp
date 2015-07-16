@@ -4,9 +4,7 @@
     'product_name%': 'Electron',
     'company_name%': 'GitHub, Inc',
     'company_abbr%': 'github',
-    'version%': '0.28.3',
-
-    'atom_source_root': '<!(["python", "tools/atom_source_root.py"])',
+    'version%': '0.29.2',
   },
   'includes': [
     'filenames.gypi',
@@ -17,8 +15,12 @@
       'ATOM_PRODUCT_NAME="<(product_name)"',
       'ATOM_PROJECT_NAME="<(project_name)"',
     ],
-    'mac_framework_dirs': [
-      '<(atom_source_root)/external_binaries',
+    'conditions': [
+      ['OS=="mac"', {
+        'mac_framework_dirs': [
+          '<(source_root)/external_binaries',
+        ],
+      }],
     ],
   },
   'targets': [
@@ -45,7 +47,6 @@
           'dependencies': [
             '<(project_name)_framework',
             '<(project_name)_helper',
-            'vendor/breakpad/breakpad.gyp:dump_syms',
           ],
           'xcode_settings': {
             'ATOM_BUNDLE_ID': 'com.<(company_abbr).<(project_name)',
@@ -115,6 +116,15 @@
           ],
         }],  # OS!="mac"
         ['OS=="win"', {
+          'include_dirs': [
+            '<(libchromiumcontent_dir)/gen/ui/resources',
+          ],
+          'msvs_settings': {
+            'VCManifestTool': {
+              'EmbedManifest': 'true',
+              'AdditionalManifestFiles': 'atom/browser/resources/win/atom.manifest',
+            }
+          },
           'copies': [
             {
               'variables': {
@@ -156,6 +166,10 @@
                 'atom/browser/default_app',
               ]
             },
+          ],
+        }, {
+          'dependencies': [
+            'vendor/breakpad/breakpad.gyp:dump_syms#host',
           ],
         }],  # OS=="win"
         ['OS=="linux"', {
@@ -258,8 +272,9 @@
             'libraries': [
               '-limm32.lib',
               '-loleacc.lib',
-              '-lComdlg32.lib',
-              '-lWininet.lib',
+              '-lcomctl32.lib',
+              '-lcomdlg32.lib',
+              '-lwininet.lib',
             ],
           },
           'dependencies': [

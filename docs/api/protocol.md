@@ -15,6 +15,9 @@ app.on('ready', function() {
     protocol.registerProtocol('atom', function(request) {
       var url = request.url.substr(7)
       return new protocol.RequestFileJob(path.normalize(__dirname + '/' + url));
+    }, function (error, scheme) {
+      if (!error)
+        console.log(scheme, ' registered successfully')
     });
 });
 ```
@@ -22,10 +25,11 @@ app.on('ready', function() {
 **Note:** This module can only be used after the `ready` event
 was emitted.
 
-## protocol.registerProtocol(scheme, handler)
+## protocol.registerProtocol(scheme, handler, callback)
 
 * `scheme` String
 * `handler` Function
+* `callback` Function
 
 Registers a custom protocol of `scheme`, the `handler` would be called with
 `handler(request)` when the a request with registered `scheme` is made.
@@ -33,9 +37,15 @@ Registers a custom protocol of `scheme`, the `handler` would be called with
 You need to return a request job in the `handler` to specify which type of
 response you would like to send.
 
-## protocol.unregisterProtocol(scheme)
+By default the scheme is treated like `http:`, which is parsed differently
+from protocols that follows "generic URI syntax" like `file:`, so you probably
+want to call `protocol.registerStandardSchemes` to make your scheme treated as
+standard scheme.
+
+## protocol.unregisterProtocol(scheme, callback)
 
 * `scheme` String
+* `callback` Function
 
 Unregisters the custom protocol of `scheme`.
 
@@ -43,25 +53,32 @@ Unregisters the custom protocol of `scheme`.
 
 * `value` Array
 
-`value` is an array of custom schemes to be registered to the standard.
+`value` is an array of custom schemes to be registered as standard schemes.
 
-## protocol.isHandledProtocol(scheme)
+A standard scheme adheres to what RFC 3986 calls
+[generic URI syntax](https://tools.ietf.org/html/rfc3986#section-3). This
+includes `file:` and `filesystem:`.
+
+## protocol.isHandledProtocol(scheme, callback)
 
 * `scheme` String
+* `callback` Function
 
-Returns whether the `scheme` can be handled already.
+`callback` returns a boolean whether the `scheme` can be handled already.
 
-## protocol.interceptProtocol(scheme, handler)
+## protocol.interceptProtocol(scheme, handler, callback)
 
 * `scheme` String
 * `handler` Function
+* `callback` Function
 
 Intercepts an existing protocol with `scheme`, returning `null` or `undefined`
 in `handler` would use the original protocol handler to handle the request.
 
-## protocol.uninterceptProtocol(scheme)
+## protocol.uninterceptProtocol(scheme, callback)
 
 * `scheme` String
+* `callback` Function
 
 Unintercepts a protocol.
 

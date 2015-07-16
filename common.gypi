@@ -1,13 +1,16 @@
 {
   'includes': [
+    'toolchain.gypi',
     'vendor/brightray/brightray.gypi',
   ],
   'variables': {
     # Required by breakpad.
     'os_bsd': 0,
+    'chromeos': 0,
     # Reflects node's config.gypi.
     'component%': 'static_library',
     'python': 'python',
+    'openssl_fips': '',
     'openssl_no_asm': 1,
     'node_target_type': 'shared_library',
     'node_install_npm': 'false',
@@ -30,8 +33,6 @@
     'V8_BASE': '',
     'v8_postmortem_support': 'false',
     'v8_enable_i18n_support': 'false',
-    # Required by Linux (empty for now, should support it in future).
-    'sysroot': '',
   },
   # Settings to compile node under Windows.
   'target_defaults': {

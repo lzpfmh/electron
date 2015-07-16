@@ -40,6 +40,7 @@
 #include "native_mate/dictionary.h"
 #include "native_mate/object_template_builder.h"
 #include "net/http/http_response_headers.h"
+#include "net/url_request/static_http_user_agent_settings.h"
 #include "net/url_request/url_request_context.h"
 
 #include "atom/common/node_includes.h"
@@ -50,6 +51,12 @@ struct PrintSettings {
   bool silent;
   bool print_background;
 };
+
+void SetUserAgentInIO(scoped_refptr<net::URLRequestContextGetter> getter,
+                      std::string user_agent) {
+  getter->GetURLRequestContext()->set_http_user_agent_settings(
+      new net::StaticHttpUserAgentSettings("en-us,en", user_agent));
+}
 
 }  // namespace
 
@@ -142,6 +149,7 @@ WebContents::WebContents(content::WebContents* web_contents)
     : content::WebContentsObserver(web_contents),
       type_(REMOTE) {
   AttachAsUserData(web_contents);
+  web_contents->SetUserAgentOverride(GetBrowserContext()->GetUserAgent());
 }
 
 WebContents::WebContents(const mate::Dictionary& options) {
@@ -167,6 +175,8 @@ WebContents::WebContents(const mate::Dictionary& options) {
   Observe(web_contents);
   AttachAsUserData(web_contents);
   InitWithWebContents(web_contents);
+
+  web_contents->SetUserAgentOverride(GetBrowserContext()->GetUserAgent());
 
   if (is_guest) {
     guest_delegate_->Initialize(this);
@@ -250,7 +260,7 @@ void WebContents::MoveContents(content::WebContents* source,
 }
 
 void WebContents::CloseContents(content::WebContents* source) {
-  Emit("closed");
+  Emit("close");
   if (type_ == BROWSER_WINDOW)
     owner_window()->CloseContents(source);
 }
@@ -547,6 +557,10 @@ bool WebContents::IsCrashed() const {
 
 void WebContents::SetUserAgent(const std::string& user_agent) {
   web_contents()->SetUserAgentOverride(user_agent);
+  scoped_refptr<net::URLRequestContextGetter> getter =
+      web_contents()->GetBrowserContext()->GetRequestContext();
+  getter->GetNetworkTaskRunner()->PostTask(FROM_HERE,
+      base::Bind(&SetUserAgentInIO, getter, user_agent));
 }
 
 void WebContents::InsertCSS(const std::string& css) {
@@ -619,9 +633,7 @@ void WebContents::InspectServiceWorker() {
 
 v8::Local<v8::Value> WebContents::Session(v8::Isolate* isolate) {
   if (session_.IsEmpty()) {
-    mate::Handle<api::Session> handle = Session::CreateFrom(
-        isolate,
-        static_cast<AtomBrowserContext*>(web_contents()->GetBrowserContext()));
+    auto handle = Session::CreateFrom(isolate, GetBrowserContext());
     session_.Reset(isolate, handle.ToV8());
   }
   return v8::Local<v8::Value>::New(isolate, session_);
@@ -740,8 +752,8 @@ mate::ObjectTemplateBuilder WebContents::GetObjectTemplateBuilder(
     v8::Isolate* isolate) {
   if (template_.IsEmpty())
     template_.Reset(isolate, mate::ObjectTemplateBuilder(isolate)
-        .SetMethod("destroy", &WebContents::Destroy)
-        .SetMethod("isAlive", &WebContents::IsAlive)
+        .SetMethod("destroy", &WebContents::Destroy, true)
+        .SetMethod("isAlive", &WebContents::IsAlive, true)
         .SetMethod("getId", &WebContents::GetID)
         .SetMethod("equal", &WebContents::Equal)
         .SetMethod("_loadUrl", &WebContents::LoadURL)
@@ -775,7 +787,7 @@ mate::ObjectTemplateBuilder WebContents::GetObjectTemplateBuilder(
         .SetMethod("unselect", &WebContents::Unselect)
         .SetMethod("replace", &WebContents::Replace)
         .SetMethod("replaceMisspelling", &WebContents::ReplaceMisspelling)
-        .SetMethod("_send", &WebContents::SendIPCMessage)
+        .SetMethod("_send", &WebContents::SendIPCMessage, true)
         .SetMethod("setSize", &WebContents::SetSize)
         .SetMethod("setAllowTransparency", &WebContents::SetAllowTransparency)
         .SetMethod("isGuest", &WebContents::IsGuest)
@@ -790,6 +802,14 @@ mate::ObjectTemplateBuilder WebContents::GetObjectTemplateBuilder(
 
   return mate::ObjectTemplateBuilder(
       isolate, v8::Local<v8::ObjectTemplate>::New(isolate, template_));
+}
+
+bool WebContents::IsDestroyed() const {
+  return !IsAlive();
+}
+
+AtomBrowserContext* WebContents::GetBrowserContext() const {
+  return static_cast<AtomBrowserContext*>(web_contents()->GetBrowserContext());
 }
 
 void WebContents::OnRendererMessage(const base::string16& channel,

@@ -34,7 +34,7 @@ describe '<webview> tag', ->
   describe 'nodeintegration attribute', ->
     it 'inserts no node symbols when not set', (done) ->
       webview.addEventListener 'console-message', (e) ->
-        assert.equal e.message, 'undefined undefined undefined'
+        assert.equal e.message, 'undefined undefined undefined undefined'
         done()
       webview.src = "file://#{fixtures}/pages/c.html"
       document.body.appendChild webview
@@ -144,7 +144,7 @@ describe '<webview> tag', ->
   describe 'new-window event', ->
     it 'emits when window.open is called', (done) ->
       webview.addEventListener 'new-window', (e) ->
-        assert.equal e.url, 'http://host'
+        assert.equal e.url, 'http://host/'
         assert.equal e.frameName, 'host'
         done()
       webview.src = "file://#{fixtures}/pages/window-open.html"
@@ -191,6 +191,14 @@ describe '<webview> tag', ->
       webview.src = "file://#{fixtures}/pages/a.html"
       document.body.appendChild webview
 
+  describe 'close event', ->
+    it 'should fire when interior page calls window.close', (done) ->
+      webview.addEventListener 'close', ->
+        done()
+
+      webview.src = "file://#{fixtures}/pages/close.html"
+      document.body.appendChild webview
+
   describe '<webview>.reload()', ->
     it 'should emit beforeunload handler', (done) ->
       listener = (e) ->
@@ -217,6 +225,6 @@ describe '<webview> tag', ->
         webview.removeEventListener 'ipc-message', listener
         done()
       webview.addEventListener 'ipc-message', listener
-      webview.setAttribute 'nodeintegration', 'on'      
+      webview.setAttribute 'nodeintegration', 'on'
       webview.src = "file://#{fixtures}/pages/history.html"
       document.body.appendChild webview

@@ -760,7 +760,7 @@ Calling `event.preventDefault()` can prevent creating new windows.
 * `event` Event
 * `url` String
 
-Emitted when user or the page wants to start an navigation, it can happen when
+Emitted when user or the page wants to start a navigation, it can happen when
 `window.location` object is changed or user clicks a link in the page.
 
 This event will not emit when the navigation is started programmatically with APIs
@@ -783,6 +783,10 @@ Emitted when a plugin process is crashed.
 ### Event: 'destroyed'
 
 Emitted when the WebContents is destroyed.
+
+### WebContents.session
+
+Returns the `Session` object used by this WebContents.
 
 ### WebContents.loadUrl(url, [options])
 
@@ -1055,11 +1059,13 @@ app.on('ready', function() {
 2. There is no way to send synchronous messages from the main process to a
    renderer process, because it would be very easy to cause dead locks.
 
-## Class: WebContents.session.cookies
+## Class: Session
+
+### Session.cookies
 
 The `cookies` gives you ability to query and modify cookies, an example is:
 
-```javascipt
+```javascript
 var BrowserWindow = require('browser-window');
 
 var win = new BrowserWindow({ width: 800, height: 600 });
@@ -1091,7 +1097,7 @@ win.webContents.on('did-finish-load', function() {
 });
 ```
 
-### WebContents.session.cookies.get(details, callback)
+### Session.cookies.get(details, callback)
 
 * `details` Object
   * `url` String - Retrieves cookies which are associated with `url`.
@@ -1118,7 +1124,7 @@ win.webContents.on('did-finish-load', function() {
          the number of seconds since the UNIX epoch. Not provided for session cookies.
 
 
-### WebContents.session.cookies.set(details, callback)
+### Session.cookies.set(details, callback)
 
 * `details` Object
   * `url` String - Retrieves cookies which are associated with `url`
@@ -1134,10 +1140,30 @@ win.webContents.on('did-finish-load', function() {
 * `callback` Function - function(error)
   * `error` Error
 
-### WebContents.session.cookies.remove(details, callback)
+### Session.cookies.remove(details, callback)
 
 * `details` Object
   * `url` String - The URL associated with the cookie
   * `name` String - The name of cookie to remove
 * `callback` Function - function(error)
   * `error` Error
+
+### Session.clearCache(callback)
+
+* `callback` Function - Called when operation is done
+
+Clears the session's HTTP cache.
+
+### Session.clearStorageData([options, ]callback)
+
+* `options` Object
+  * `origin` String - Should follow `window.location.origin`'s representation
+    `scheme://host:port`
+  * `storages` Array - The types of storages to clear, can contain:
+    `appcache`, `cookies`, `filesystem`, `indexdb`, `localstorage`,
+    `shadercache`, `websql`, `serviceworkers`
+  * `quotas` Array - The types of quotas to clear, can contain:
+    `temporary`, `persistent`, `syncable`
+* `callback` Function - Called when operation is done
+
+Clears the data of web storages.

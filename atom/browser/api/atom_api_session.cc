@@ -5,21 +5,97 @@
 #include "atom/browser/api/atom_api_session.h"
 
 #include <string>
+#include <vector>
 
 #include "atom/browser/api/atom_api_cookies.h"
 #include "atom/browser/atom_browser_context.h"
 #include "atom/common/native_mate_converters/gurl_converter.h"
 #include "base/thread_task_runner_handle.h"
+#include "base/strings/string_util.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/storage_partition.h"
 #include "native_mate/callback.h"
 #include "native_mate/object_template_builder.h"
 #include "net/base/load_flags.h"
+#include "net/disk_cache/disk_cache.h"
 #include "net/proxy/proxy_service.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_getter.h"
 
 #include "atom/common/node_includes.h"
+
+using content::BrowserThread;
+using content::StoragePartition;
+
+namespace {
+
+struct ClearStorageDataOptions {
+  GURL origin;
+  uint32 storage_types = StoragePartition::REMOVE_DATA_MASK_ALL;
+  uint32 quota_types = StoragePartition::QUOTA_MANAGED_STORAGE_MASK_ALL;
+};
+
+uint32 GetStorageMask(const std::vector<std::string>& storage_types) {
+  uint32 storage_mask = 0;
+  for (const auto& it : storage_types) {
+    auto type = base::StringToLowerASCII(it);
+    if (type == "appcache")
+      storage_mask |= StoragePartition::REMOVE_DATA_MASK_APPCACHE;
+    else if (type == "cookies")
+      storage_mask |= StoragePartition::REMOVE_DATA_MASK_COOKIES;
+    else if (type == "filesystem")
+      storage_mask |= StoragePartition::REMOVE_DATA_MASK_FILE_SYSTEMS;
+    else if (type == "indexdb")
+      storage_mask |= StoragePartition::REMOVE_DATA_MASK_INDEXEDDB;
+    else if (type == "localstorage")
+      storage_mask |= StoragePartition::REMOVE_DATA_MASK_LOCAL_STORAGE;
+    else if (type == "shadercache")
+      storage_mask |= StoragePartition::REMOVE_DATA_MASK_SHADER_CACHE;
+    else if (type == "websql")
+      storage_mask |= StoragePartition::REMOVE_DATA_MASK_WEBSQL;
+    else if (type == "serviceworkers")
+      storage_mask |= StoragePartition::REMOVE_DATA_MASK_SERVICE_WORKERS;
+  }
+  return storage_mask;
+}
+
+uint32 GetQuotaMask(const std::vector<std::string>& quota_types) {
+  uint32 quota_mask = 0;
+  for (const auto& it : quota_types) {
+    auto type = base::StringToLowerASCII(it);
+    if (type == "temporary")
+      quota_mask |= StoragePartition::QUOTA_MANAGED_STORAGE_MASK_TEMPORARY;
+    else if (type == "persistent")
+      quota_mask |= StoragePartition::QUOTA_MANAGED_STORAGE_MASK_PERSISTENT;
+    else if (type == "syncable")
+      quota_mask |= StoragePartition::QUOTA_MANAGED_STORAGE_MASK_SYNCABLE;
+  }
+  return quota_mask;
+}
+
+}  // namespace
+
+namespace mate {
+
+template<>
+struct Converter<ClearStorageDataOptions> {
+  static bool FromV8(v8::Isolate* isolate,
+                     v8::Local<v8::Value> val,
+                     ClearStorageDataOptions* out) {
+    mate::Dictionary options;
+    if (!ConvertFromV8(isolate, val, &options))
+      return false;
+    options.Get("origin", &out->origin);
+    std::vector<std::string> types;
+    if (options.Get("storages", &types))
+      out->storage_types = GetStorageMask(types);
+    if (options.Get("quotas", &types))
+      out->quota_types = GetQuotaMask(types);
+    return true;
+  }
+};
+
+}  // namespace mate
 
 namespace atom {
 
@@ -80,6 +156,43 @@ class ResolveProxyHelper {
   DISALLOW_COPY_AND_ASSIGN(ResolveProxyHelper);
 };
 
+// Runs the callback in UI thread.
+void RunCallbackInUI(const net::CompletionCallback& callback, int result) {
+  BrowserThread::PostTask(
+      BrowserThread::UI, FROM_HERE, base::Bind(callback, result));
+}
+
+// Callback of HttpCache::GetBackend.
+void OnGetBackend(disk_cache::Backend** backend_ptr,
+                  const net::CompletionCallback& callback,
+                  int result) {
+  if (result != net::OK) {
+    RunCallbackInUI(callback, result);
+  } else if (backend_ptr && *backend_ptr) {
+    (*backend_ptr)->DoomAllEntries(base::Bind(&RunCallbackInUI, callback));
+  } else {
+    RunCallbackInUI(callback, net::ERR_FAILED);
+  }
+}
+
+void ClearHttpCacheInIO(content::BrowserContext* browser_context,
+                        const net::CompletionCallback& callback) {
+  auto request_context =
+      browser_context->GetRequestContext()->GetURLRequestContext();
+  auto http_cache = request_context->http_transaction_factory()->GetCache();
+  if (!http_cache)
+    RunCallbackInUI(callback, net::ERR_FAILED);
+
+  // Call GetBackend and make the backend's ptr accessable in OnGetBackend.
+  using BackendPtr = disk_cache::Backend*;
+  BackendPtr* backend_ptr = new BackendPtr(nullptr);
+  net::CompletionCallback on_get_backend =
+      base::Bind(&OnGetBackend, base::Owned(backend_ptr), callback);
+  int rv = http_cache->GetBackend(backend_ptr, on_get_backend);
+  if (rv != net::ERR_IO_PENDING)
+    on_get_backend.Run(net::OK);
+}
+
 }  // namespace
 
 Session::Session(AtomBrowserContext* browser_context)
@@ -94,6 +207,31 @@ void Session::ResolveProxy(const GURL& url, ResolveProxyCallback callback) {
   new ResolveProxyHelper(browser_context_, url, callback);
 }
 
+void Session::ClearCache(const net::CompletionCallback& callback) {
+  BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
+      base::Bind(&ClearHttpCacheInIO,
+                 base::Unretained(browser_context_),
+                 callback));
+}
+
+void Session::ClearStorageData(mate::Arguments* args) {
+  // clearStorageData([options, ]callback)
+  ClearStorageDataOptions options;
+  args->GetNext(&options);
+  base::Closure callback;
+  if (!args->GetNext(&callback)) {
+    args->ThrowError();
+    return;
+  }
+
+  auto storage_partition =
+      content::BrowserContext::GetStoragePartition(browser_context_, nullptr);
+  storage_partition->ClearData(
+      options.storage_types, options.quota_types, options.origin,
+      content::StoragePartition::OriginMatcherFunction(),
+      base::Time(), base::Time::Max(), callback);
+}
+
 v8::Local<v8::Value> Session::Cookies(v8::Isolate* isolate) {
   if (cookies_.IsEmpty()) {
     auto handle = atom::api::Cookies::Create(isolate, browser_context_);
@@ -106,6 +244,8 @@ mate::ObjectTemplateBuilder Session::GetObjectTemplateBuilder(
     v8::Isolate* isolate) {
   return mate::ObjectTemplateBuilder(isolate)
       .SetMethod("resolveProxy", &Session::ResolveProxy)
+      .SetMethod("clearCache", &Session::ClearCache)
+      .SetMethod("clearStorageData", &Session::ClearStorageData)
       .SetProperty("cookies", &Session::Cookies);
 }
 

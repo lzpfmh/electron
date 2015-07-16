@@ -77,7 +77,7 @@ if nodeIntegration in ['true', 'all', 'except-iframe', 'manual-enable-iframe']
     global.__dirname = __dirname
 
   # Redirect window.onerror to uncaughtException.
-  window.onerror = (error) ->
+  window.onerror = (message, filename, lineno, colno, error) ->
     if global.process.listeners('uncaughtException').length > 0
       global.process.emit 'uncaughtException', error
       true
@@ -93,6 +93,7 @@ else
     delete global.process
     delete global.setImmediate
     delete global.clearImmediate
+    delete global.global
 
 # Load the script specfied by the "preload" attribute.
 if preloadScript

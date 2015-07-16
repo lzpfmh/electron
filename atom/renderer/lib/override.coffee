@@ -2,6 +2,12 @@ process = global.process
 ipc = require 'ipc'
 remote = require 'remote'
 
+# Helper function to resolve relative url.
+a = window.top.document.createElement 'a'
+resolveUrl = (url) ->
+  a.href = url
+  a.href
+
 # Window object returned by "window.open".
 class BrowserWindowProxy
   constructor: (@guestId) ->
@@ -45,11 +51,20 @@ window.open = (url, frameName='', features='') ->
         value
   options.x ?= options.left if options.left
   options.y ?= options.top if options.top
-  options.title ?= name
+  options.title ?= frameName
   options.width ?= 800
   options.height ?= 600
 
+  # Resolve relative urls.
+  url = resolveUrl url
+
   (options[name] = parseInt(options[name], 10) if options[name]?) for name in ints
+
+  # Inherit the node-integration option of current window.
+  unless options['node-integration']
+    for arg in process.argv when arg.indexOf('--node-integration=') is 0
+      options['node-integration'] = arg.substr(-4) is 'true'
+      break
 
   guestId = ipc.sendSync 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_OPEN', url, frameName, options
   if guestId

@@ -16,14 +16,19 @@ BrowserWindow::_init = ->
     options = show: true, width: 800, height: 600
     ipc.emit 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_OPEN', event, url, frameName, options
 
-  # window.move(...)
+  # window.resizeTo(...)
+  # window.moveTo(...)
   @webContents.on 'move', (event, size) =>
-    @setSize size
+    @setBounds size
 
   # Hide the auto-hide menu when webContents is focused.
   @webContents.on 'activate', =>
     if process.platform isnt 'darwin' and @isMenuBarAutoHide() and @isMenuBarVisible()
       @setMenuBarVisibility false
+
+  # Forward the crashed event.
+  @webContents.on 'crashed', =>
+    @emit 'crashed'
 
   # Redirect focus/blur event to app instance too.
   @on 'blur', (event) =>
