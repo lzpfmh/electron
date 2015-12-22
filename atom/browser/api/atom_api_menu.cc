@@ -6,9 +6,9 @@
 
 #include "atom/browser/native_window.h"
 #include "atom/common/native_mate_converters/accelerator_converter.h"
+#include "atom/common/native_mate_converters/callback.h"
 #include "atom/common/native_mate_converters/image_converter.h"
 #include "atom/common/native_mate_converters/string16_converter.h"
-#include "native_mate/callback.h"
 #include "native_mate/constructor.h"
 #include "native_mate/dictionary.h"
 #include "native_mate/object_template_builder.h"
@@ -20,7 +20,7 @@ namespace atom {
 namespace api {
 
 Menu::Menu()
-    : model_(new ui::SimpleMenuModel(this)),
+    : model_(new AtomMenuModel(this)),
       parent_(NULL) {
 }
 
@@ -107,6 +107,10 @@ void Menu::SetSublabel(int index, const base::string16& sublabel) {
   model_->SetSublabel(index, sublabel);
 }
 
+void Menu::SetRole(int index, const base::string16& role) {
+  model_->SetRole(index, role);
+}
+
 void Menu::Clear() {
   model_->Clear();
 }
@@ -147,6 +151,7 @@ bool Menu::IsVisibleAt(int index) const {
 void Menu::BuildPrototype(v8::Isolate* isolate,
                           v8::Local<v8::ObjectTemplate> prototype) {
   mate::ObjectTemplateBuilder(isolate, prototype)
+      .MakeDestroyable()
       .SetMethod("insertItem", &Menu::InsertItemAt)
       .SetMethod("insertCheckItem", &Menu::InsertCheckItemAt)
       .SetMethod("insertRadioItem", &Menu::InsertRadioItemAt)
@@ -154,6 +159,7 @@ void Menu::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("insertSubMenu", &Menu::InsertSubMenuAt)
       .SetMethod("setIcon", &Menu::SetIcon)
       .SetMethod("setSublabel", &Menu::SetSublabel)
+      .SetMethod("setRole", &Menu::SetRole)
       .SetMethod("clear", &Menu::Clear)
       .SetMethod("getIndexOfCommandId", &Menu::GetIndexOfCommandId)
       .SetMethod("getItemCount", &Menu::GetItemCount)

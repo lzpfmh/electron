@@ -68,7 +68,7 @@ int Main(const wchar_t* cmd) {
   VLOG(1) << "Session start. cmdline is [" << cmd << "]";
 
   // Setting the crash reporter.
-  base::string16 pipe_name = ReplaceStringPlaceholders(kPipeNameFormat,
+  base::string16 pipe_name = base::ReplaceStringPlaceholders(kPipeNameFormat,
                                                  application_name,
                                                  NULL);
   cmd_line.AppendSwitch("no-window");
@@ -77,7 +77,8 @@ int Main(const wchar_t* cmd) {
   cmd_line.AppendSwitchNative("pipe-name", pipe_name);
 
   breakpad::CrashService crash_service;
-  if (!crash_service.Initialize(operating_dir, operating_dir))
+  if (!crash_service.Initialize(application_name, operating_dir,
+                                operating_dir))
     return 2;
 
   VLOG(1) << "Ready to process crash requests";

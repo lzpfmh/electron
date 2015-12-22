@@ -1,7 +1,7 @@
+{app, BrowserWindow} = require 'electron'
+
 binding = process.atomBinding 'dialog'
 v8Util = process.atomBinding 'v8_util'
-app = require 'app'
-BrowserWindow = require 'browser-window'
 
 fileDialogProperties =
   openFile:        1 << 0
@@ -10,6 +10,9 @@ fileDialogProperties =
   createDirectory: 1 << 3
 
 messageBoxTypes = ['none', 'info', 'warning', 'error', 'question']
+
+messageBoxOptions =
+  noLink: 1 << 0
 
 parseArgs = (window, options, callback) ->
   unless window is null or window?.constructor is BrowserWindow
@@ -101,10 +104,15 @@ module.exports =
           options.cancelId = i
           break
 
+    flags = if options.noLink then messageBoxOptions.noLink else 0
+
     binding.showMessageBox messageBoxType,
                            options.buttons,
                            options.cancelId,
-                           [options.title, options.message, options.detail],
+                           flags,
+                           options.title,
+                           options.message,
+                           options.detail,
                            options.icon,
                            window,
                            callback

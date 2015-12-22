@@ -12,11 +12,11 @@
 #include "atom/common/native_mate_converters/gfx_converter.h"
 #include "atom/common/native_mate_converters/image_converter.h"
 #include "atom/common/native_mate_converters/string16_converter.h"
+#include "atom/common/node_includes.h"
 #include "native_mate/constructor.h"
 #include "native_mate/dictionary.h"
+#include "ui/events/event_constants.h"
 #include "ui/gfx/image/image.h"
-
-#include "atom/common/node_includes.h"
 
 namespace atom {
 
@@ -34,18 +34,32 @@ Tray::~Tray() {
 // static
 mate::Wrappable* Tray::New(v8::Isolate* isolate, const gfx::Image& image) {
   if (!Browser::Get()->is_ready()) {
-    node::ThrowError(isolate, "Cannot create Tray before app is ready");
+    isolate->ThrowException(v8::Exception::Error(mate::StringToV8(
+        isolate, "Cannot create Tray before app is ready")));
     return nullptr;
   }
   return new Tray(image);
 }
 
-void Tray::OnClicked(const gfx::Rect& bounds) {
-  Emit("clicked", bounds);
+void Tray::OnClicked(const gfx::Rect& bounds, int modifiers) {
+  v8::Locker locker(isolate());
+  v8::HandleScope handle_scope(isolate());
+  EmitCustomEvent("click",
+                  ModifiersToObject(isolate(), modifiers), bounds);
 }
 
-void Tray::OnDoubleClicked() {
-  Emit("double-clicked");
+void Tray::OnDoubleClicked(const gfx::Rect& bounds, int modifiers) {
+  v8::Locker locker(isolate());
+  v8::HandleScope handle_scope(isolate());
+  EmitCustomEvent("double-click",
+                  ModifiersToObject(isolate(), modifiers), bounds);
+}
+
+void Tray::OnRightClicked(const gfx::Rect& bounds, int modifiers) {
+  v8::Locker locker(isolate());
+  v8::HandleScope handle_scope(isolate());
+  EmitCustomEvent("right-click",
+                  ModifiersToObject(isolate(), modifiers), bounds);
 }
 
 void Tray::OnBalloonShow() {
@@ -53,19 +67,31 @@ void Tray::OnBalloonShow() {
 }
 
 void Tray::OnBalloonClicked() {
-  Emit("balloon-clicked");
+  Emit("balloon-click");
 }
 
 void Tray::OnBalloonClosed() {
   Emit("balloon-closed");
 }
 
-bool Tray::IsDestroyed() const {
-  return !tray_icon_;
+void Tray::OnDrop() {
+  Emit("drop");
 }
 
-void Tray::Destroy() {
-  tray_icon_.reset();
+void Tray::OnDropFiles(const std::vector<std::string>& files) {
+  Emit("drop-files", files);
+}
+
+void Tray::OnDragEntered() {
+  Emit("drag-enter");
+}
+
+void Tray::OnDragExited() {
+  Emit("drag-leave");
+}
+
+void Tray::OnDragEnded() {
+  Emit("drag-end");
 }
 
 void Tray::SetImage(mate::Arguments* args, const gfx::Image& image) {
@@ -102,21 +128,40 @@ void Tray::DisplayBalloon(mate::Arguments* args,
   tray_icon_->DisplayBalloon(icon, title, content);
 }
 
+void Tray::PopUpContextMenu(mate::Arguments* args) {
+  mate::Handle<Menu> menu;
+  args->GetNext(&menu);
+  gfx::Point pos;
+  args->GetNext(&pos);
+  tray_icon_->PopUpContextMenu(pos, menu.IsEmpty() ? nullptr : menu->model());
+}
+
 void Tray::SetContextMenu(mate::Arguments* args, Menu* menu) {
   tray_icon_->SetContextMenu(menu->model());
+}
+
+v8::Local<v8::Object> Tray::ModifiersToObject(v8::Isolate* isolate,
+                                              int modifiers) {
+  mate::Dictionary obj(isolate, v8::Object::New(isolate));
+  obj.Set("shiftKey", static_cast<bool>(modifiers & ui::EF_SHIFT_DOWN));
+  obj.Set("ctrlKey", static_cast<bool>(modifiers & ui::EF_CONTROL_DOWN));
+  obj.Set("altKey", static_cast<bool>(modifiers & ui::EF_ALT_DOWN));
+  obj.Set("metaKey", static_cast<bool>(modifiers & ui::EF_COMMAND_DOWN));
+  return obj.GetHandle();
 }
 
 // static
 void Tray::BuildPrototype(v8::Isolate* isolate,
                           v8::Local<v8::ObjectTemplate> prototype) {
   mate::ObjectTemplateBuilder(isolate, prototype)
-      .SetMethod("destroy", &Tray::Destroy, true)
+      .MakeDestroyable()
       .SetMethod("setImage", &Tray::SetImage)
       .SetMethod("setPressedImage", &Tray::SetPressedImage)
       .SetMethod("setToolTip", &Tray::SetToolTip)
       .SetMethod("setTitle", &Tray::SetTitle)
       .SetMethod("setHighlightMode", &Tray::SetHighlightMode)
       .SetMethod("displayBalloon", &Tray::DisplayBalloon)
+      .SetMethod("popUpContextMenu", &Tray::PopUpContextMenu)
       .SetMethod("_setContextMenu", &Tray::SetContextMenu);
 }
 

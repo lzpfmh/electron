@@ -8,21 +8,35 @@
 #include <vector>
 
 #include "atom/browser/api/atom_api_cookies.h"
+#include "atom/browser/api/atom_api_download_item.h"
+#include "atom/browser/api/atom_api_web_contents.h"
+#include "atom/browser/api/atom_api_web_request.h"
+#include "atom/browser/api/save_page_handler.h"
 #include "atom/browser/atom_browser_context.h"
+#include "atom/browser/atom_browser_main_parts.h"
+#include "atom/browser/net/atom_cert_verifier.h"
+#include "atom/common/native_mate_converters/callback.h"
 #include "atom/common/native_mate_converters/gurl_converter.h"
-#include "base/thread_task_runner_handle.h"
+#include "atom/common/native_mate_converters/file_path_converter.h"
+#include "atom/common/native_mate_converters/net_converter.h"
+#include "atom/common/node_includes.h"
+#include "base/files/file_path.h"
+#include "base/prefs/pref_service.h"
 #include "base/strings/string_util.h"
+#include "base/thread_task_runner_handle.h"
+#include "brightray/browser/net/devtools_network_conditions.h"
+#include "brightray/browser/net/devtools_network_controller.h"
+#include "chrome/common/pref_names.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/storage_partition.h"
-#include "native_mate/callback.h"
+#include "native_mate/dictionary.h"
 #include "native_mate/object_template_builder.h"
 #include "net/base/load_flags.h"
 #include "net/disk_cache/disk_cache.h"
 #include "net/proxy/proxy_service.h"
+#include "net/proxy/proxy_config_service_fixed.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_getter.h"
-
-#include "atom/common/node_includes.h"
 
 using content::BrowserThread;
 using content::StoragePartition;
@@ -38,7 +52,7 @@ struct ClearStorageDataOptions {
 uint32 GetStorageMask(const std::vector<std::string>& storage_types) {
   uint32 storage_mask = 0;
   for (const auto& it : storage_types) {
-    auto type = base::StringToLowerASCII(it);
+    auto type = base::ToLowerASCII(it);
     if (type == "appcache")
       storage_mask |= StoragePartition::REMOVE_DATA_MASK_APPCACHE;
     else if (type == "cookies")
@@ -62,7 +76,7 @@ uint32 GetStorageMask(const std::vector<std::string>& storage_types) {
 uint32 GetQuotaMask(const std::vector<std::string>& quota_types) {
   uint32 quota_mask = 0;
   for (const auto& it : quota_types) {
-    auto type = base::StringToLowerASCII(it);
+    auto type = base::ToLowerASCII(it);
     if (type == "temporary")
       quota_mask |= StoragePartition::QUOTA_MANAGED_STORAGE_MASK_TEMPORARY;
     else if (type == "persistent")
@@ -95,6 +109,24 @@ struct Converter<ClearStorageDataOptions> {
   }
 };
 
+template<>
+struct Converter<net::ProxyConfig> {
+  static bool FromV8(v8::Isolate* isolate,
+                     v8::Local<v8::Value> val,
+                     net::ProxyConfig* out) {
+    std::string proxy;
+    if (!ConvertFromV8(isolate, val, &proxy))
+      return false;
+    auto pac_url = GURL(proxy);
+    if (pac_url.is_valid()) {
+      out->set_pac_url(pac_url);
+    } else {
+      out->proxy_rules().ParseFromString(proxy);
+    }
+    return true;
+  }
+};
+
 }  // namespace mate
 
 namespace atom {
@@ -102,6 +134,10 @@ namespace atom {
 namespace api {
 
 namespace {
+
+// The wrapSession funtion which is implemented in JavaScript
+using WrapSessionCallback = base::Callback<void(v8::Local<v8::Value>)>;
+WrapSessionCallback g_wrap_session;
 
 class ResolveProxyHelper {
  public:
@@ -157,9 +193,10 @@ class ResolveProxyHelper {
 };
 
 // Runs the callback in UI thread.
-void RunCallbackInUI(const net::CompletionCallback& callback, int result) {
+template <typename ...T>
+void RunCallbackInUI(const base::Callback<void(T...)>& callback, T... result) {
   BrowserThread::PostTask(
-      BrowserThread::UI, FROM_HERE, base::Bind(callback, result));
+      BrowserThread::UI, FROM_HERE, base::Bind(callback, result...));
 }
 
 // Callback of HttpCache::GetBackend.
@@ -169,19 +206,19 @@ void OnGetBackend(disk_cache::Backend** backend_ptr,
   if (result != net::OK) {
     RunCallbackInUI(callback, result);
   } else if (backend_ptr && *backend_ptr) {
-    (*backend_ptr)->DoomAllEntries(base::Bind(&RunCallbackInUI, callback));
+    (*backend_ptr)->DoomAllEntries(base::Bind(&RunCallbackInUI<int>, callback));
   } else {
-    RunCallbackInUI(callback, net::ERR_FAILED);
+    RunCallbackInUI<int>(callback, net::ERR_FAILED);
   }
 }
 
-void ClearHttpCacheInIO(content::BrowserContext* browser_context,
-                        const net::CompletionCallback& callback) {
-  auto request_context =
-      browser_context->GetRequestContext()->GetURLRequestContext();
+void ClearHttpCacheInIO(
+    const scoped_refptr<net::URLRequestContextGetter>& context_getter,
+    const net::CompletionCallback& callback) {
+  auto request_context = context_getter->GetURLRequestContext();
   auto http_cache = request_context->http_transaction_factory()->GetCache();
   if (!http_cache)
-    RunCallbackInUI(callback, net::ERR_FAILED);
+    RunCallbackInUI<int>(callback, net::ERR_FAILED);
 
   // Call GetBackend and make the backend's ptr accessable in OnGetBackend.
   using BackendPtr = disk_cache::Backend*;
@@ -193,24 +230,56 @@ void ClearHttpCacheInIO(content::BrowserContext* browser_context,
     on_get_backend.Run(net::OK);
 }
 
+void SetProxyInIO(net::URLRequestContextGetter* getter,
+                  const net::ProxyConfig& config,
+                  const base::Closure& callback) {
+  auto proxy_service = getter->GetURLRequestContext()->proxy_service();
+  proxy_service->ResetConfigService(make_scoped_ptr(
+      new net::ProxyConfigServiceFixed(config)));
+  // Refetches and applies the new pac script if provided.
+  proxy_service->ForceReloadProxyConfig();
+  RunCallbackInUI(callback);
+}
+
 }  // namespace
 
 Session::Session(AtomBrowserContext* browser_context)
     : browser_context_(browser_context) {
   AttachAsUserData(browser_context);
+
+  // Observe DownloadManger to get download notifications.
+  content::BrowserContext::GetDownloadManager(browser_context)->
+      AddObserver(this);
 }
 
 Session::~Session() {
+  content::BrowserContext::GetDownloadManager(browser_context())->
+      RemoveObserver(this);
+}
+
+void Session::OnDownloadCreated(content::DownloadManager* manager,
+                                content::DownloadItem* item) {
+  auto web_contents = item->GetWebContents();
+  if (SavePageHandler::IsSavePageTypes(item->GetMimeType()))
+    return;
+  bool prevent_default = Emit(
+      "will-download",
+      DownloadItem::Create(isolate(), item),
+      api::WebContents::CreateFrom(isolate(), web_contents));
+  if (prevent_default) {
+    item->Cancel(true);
+    item->Remove();
+  }
 }
 
 void Session::ResolveProxy(const GURL& url, ResolveProxyCallback callback) {
-  new ResolveProxyHelper(browser_context_, url, callback);
+  new ResolveProxyHelper(browser_context(), url, callback);
 }
 
 void Session::ClearCache(const net::CompletionCallback& callback) {
   BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
       base::Bind(&ClearHttpCacheInIO,
-                 base::Unretained(browser_context_),
+                 make_scoped_refptr(browser_context_->GetRequestContext()),
                  callback));
 }
 
@@ -225,41 +294,152 @@ void Session::ClearStorageData(mate::Arguments* args) {
   }
 
   auto storage_partition =
-      content::BrowserContext::GetStoragePartition(browser_context_, nullptr);
+      content::BrowserContext::GetStoragePartition(browser_context(), nullptr);
   storage_partition->ClearData(
       options.storage_types, options.quota_types, options.origin,
       content::StoragePartition::OriginMatcherFunction(),
       base::Time(), base::Time::Max(), callback);
 }
 
+void Session::SetProxy(const net::ProxyConfig& config,
+                       const base::Closure& callback) {
+  auto getter = browser_context_->GetRequestContext();
+  BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
+      base::Bind(&SetProxyInIO, base::Unretained(getter), config, callback));
+}
+
+void Session::SetDownloadPath(const base::FilePath& path) {
+  browser_context_->prefs()->SetFilePath(
+      prefs::kDownloadDefaultDirectory, path);
+}
+
+void Session::EnableNetworkEmulation(const mate::Dictionary& options) {
+  scoped_ptr<brightray::DevToolsNetworkConditions> conditions;
+  bool offline = false;
+  double latency, download_throughput, upload_throughput;
+  if (options.Get("offline", &offline) && offline) {
+    conditions.reset(new brightray::DevToolsNetworkConditions(offline));
+  } else {
+    options.Get("latency", &latency);
+    options.Get("downloadThroughput", &download_throughput);
+    options.Get("uploadThroughput", &upload_throughput);
+    conditions.reset(
+        new brightray::DevToolsNetworkConditions(false,
+                                                 latency,
+                                                 download_throughput,
+                                                 upload_throughput));
+  }
+  auto controller = browser_context_->GetDevToolsNetworkController();
+
+  BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
+      base::Bind(&brightray::DevToolsNetworkController::SetNetworkState,
+                 base::Unretained(controller),
+                 std::string(),
+                 base::Passed(&conditions)));
+}
+
+void Session::DisableNetworkEmulation() {
+  scoped_ptr<brightray::DevToolsNetworkConditions> conditions(
+      new brightray::DevToolsNetworkConditions(false));
+  auto controller = browser_context_->GetDevToolsNetworkController();
+
+  BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
+      base::Bind(&brightray::DevToolsNetworkController::SetNetworkState,
+                 base::Unretained(controller),
+                 std::string(),
+                 base::Passed(&conditions)));
+}
+
+void Session::SetCertVerifyProc(v8::Local<v8::Value> val,
+                                mate::Arguments* args) {
+  AtomCertVerifier::VerifyProc proc;
+  if (!(val->IsNull() || mate::ConvertFromV8(args->isolate(), val, &proc))) {
+    args->ThrowError("Must pass null or function");
+    return;
+  }
+
+  browser_context_->cert_verifier()->SetVerifyProc(proc);
+}
+
 v8::Local<v8::Value> Session::Cookies(v8::Isolate* isolate) {
   if (cookies_.IsEmpty()) {
-    auto handle = atom::api::Cookies::Create(isolate, browser_context_);
+    auto handle = atom::api::Cookies::Create(isolate, browser_context());
     cookies_.Reset(isolate, handle.ToV8());
   }
   return v8::Local<v8::Value>::New(isolate, cookies_);
 }
 
-mate::ObjectTemplateBuilder Session::GetObjectTemplateBuilder(
-    v8::Isolate* isolate) {
-  return mate::ObjectTemplateBuilder(isolate)
-      .SetMethod("resolveProxy", &Session::ResolveProxy)
-      .SetMethod("clearCache", &Session::ClearCache)
-      .SetMethod("clearStorageData", &Session::ClearStorageData)
-      .SetProperty("cookies", &Session::Cookies);
+v8::Local<v8::Value> Session::WebRequest(v8::Isolate* isolate) {
+  if (web_request_.IsEmpty()) {
+    auto handle = atom::api::WebRequest::Create(isolate, browser_context());
+    web_request_.Reset(isolate, handle.ToV8());
+  }
+  return v8::Local<v8::Value>::New(isolate, web_request_);
 }
 
 // static
 mate::Handle<Session> Session::CreateFrom(
-    v8::Isolate* isolate,
-    AtomBrowserContext* browser_context) {
+    v8::Isolate* isolate, AtomBrowserContext* browser_context) {
   auto existing = TrackableObject::FromWrappedClass(isolate, browser_context);
   if (existing)
     return mate::CreateHandle(isolate, static_cast<Session*>(existing));
 
-  return mate::CreateHandle(isolate, new Session(browser_context));
+  auto handle = mate::CreateHandle(isolate, new Session(browser_context));
+  g_wrap_session.Run(handle.ToV8());
+  return handle;
+}
+
+// static
+mate::Handle<Session> Session::FromPartition(
+    v8::Isolate* isolate, const std::string& partition, bool in_memory) {
+  auto browser_context = brightray::BrowserContext::From(partition, in_memory);
+  return CreateFrom(isolate,
+                    static_cast<AtomBrowserContext*>(browser_context.get()));
+}
+
+// static
+void Session::BuildPrototype(v8::Isolate* isolate,
+                             v8::Local<v8::ObjectTemplate> prototype) {
+  mate::ObjectTemplateBuilder(isolate, prototype)
+      .MakeDestroyable()
+      .SetMethod("resolveProxy", &Session::ResolveProxy)
+      .SetMethod("clearCache", &Session::ClearCache)
+      .SetMethod("clearStorageData", &Session::ClearStorageData)
+      .SetMethod("setProxy", &Session::SetProxy)
+      .SetMethod("setDownloadPath", &Session::SetDownloadPath)
+      .SetMethod("enableNetworkEmulation", &Session::EnableNetworkEmulation)
+      .SetMethod("disableNetworkEmulation", &Session::DisableNetworkEmulation)
+      .SetMethod("setCertificateVerifyProc", &Session::SetCertVerifyProc)
+      .SetProperty("cookies", &Session::Cookies)
+      .SetProperty("webRequest", &Session::WebRequest);
+}
+
+void ClearWrapSession() {
+  g_wrap_session.Reset();
+}
+
+void SetWrapSession(const WrapSessionCallback& callback) {
+  g_wrap_session = callback;
+
+  // Cleanup the wrapper on exit.
+  atom::AtomBrowserMainParts::Get()->RegisterDestructionCallback(
+      base::Bind(ClearWrapSession));
 }
 
 }  // namespace api
 
 }  // namespace atom
+
+namespace {
+
+void Initialize(v8::Local<v8::Object> exports, v8::Local<v8::Value> unused,
+                v8::Local<v8::Context> context, void* priv) {
+  v8::Isolate* isolate = context->GetIsolate();
+  mate::Dictionary dict(isolate, exports);
+  dict.SetMethod("fromPartition", &atom::api::Session::FromPartition);
+  dict.SetMethod("_setWrapSession", &atom::api::SetWrapSession);
+}
+
+}  // namespace
+
+NODE_MODULE_CONTEXT_AWARE_BUILTIN(atom_browser_session, Initialize)

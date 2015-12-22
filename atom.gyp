@@ -4,7 +4,7 @@
     'product_name%': 'Electron',
     'company_name%': 'GitHub, Inc',
     'company_abbr%': 'github',
-    'version%': '0.29.2',
+    'version%': '0.36.1',
   },
   'includes': [
     'filenames.gypi',
@@ -64,9 +64,6 @@
               'files': [
                 '<(PRODUCT_DIR)/<(product_name) Helper.app',
                 '<(PRODUCT_DIR)/<(product_name) Framework.framework',
-                'external_binaries/Squirrel.framework',
-                'external_binaries/ReactiveCocoa.framework',
-                'external_binaries/Mantle.framework',
               ],
             },
             {
@@ -109,7 +106,21 @@
                 '<@(locale_dirs)',
               ],
             },
-          ]
+          ],
+          'conditions': [
+            ['mas_build==0', {
+              'copies': [
+                {
+                  'destination': '<(PRODUCT_DIR)/<(product_name).app/Contents/Frameworks',
+                  'files': [
+                    'external_binaries/Squirrel.framework',
+                    'external_binaries/ReactiveCocoa.framework',
+                    'external_binaries/Mantle.framework',
+                  ],
+                },
+              ],
+            }],
+          ],
         }, {  # OS=="mac"
           'dependencies': [
             'make_locale_paks',
@@ -144,7 +155,6 @@
               'destination': '<(PRODUCT_DIR)',
               'files': [
                 '<@(copied_libraries)',
-                '<(libchromiumcontent_dir)/ffmpegsumo.dll',
                 '<(libchromiumcontent_dir)/libEGL.dll',
                 '<(libchromiumcontent_dir)/libGLESv2.dll',
                 '<(libchromiumcontent_dir)/icudtl.dat',
@@ -193,7 +203,6 @@
               'destination': '<(PRODUCT_DIR)',
               'files': [
                 '<@(copied_libraries)',
-                '<(libchromiumcontent_dir)/libffmpegsumo.so',
                 '<(libchromiumcontent_dir)/icudtl.dat',
                 '<(libchromiumcontent_dir)/content_shell.pak',
                 '<(libchromiumcontent_dir)/natives_blob.bin',
@@ -226,8 +235,6 @@
         # Defined in Chromium but not exposed in its gyp file.
         'V8_USE_EXTERNAL_STARTUP_DATA',
         'ENABLE_PLUGINS',
-        # Needed by Node.
-        'NODE_WANT_INTERNALS=1',
       ],
       'sources': [
         '<@(lib_sources)',
@@ -249,6 +256,10 @@
         'vendor/node/deps/cares/include',
         # The `third_party/WebKit/Source/platform/weborigin/SchemeRegistry.h` is using `platform/PlatformExport.h`.
         '<(libchromiumcontent_src_dir)/third_party/WebKit/Source',
+        # The 'third_party/libyuv/include/libyuv/scale_argb.h' is using 'libyuv/basic_types.h'.
+        '<(libchromiumcontent_src_dir)/third_party/libyuv/include',
+        # The 'third_party/webrtc/modules/desktop_capture/desktop_frame.h' is using 'webrtc/base/scoped_ptr.h'.
+        '<(libchromiumcontent_src_dir)/third_party/',
       ],
       'direct_dependent_settings': {
         'include_dirs': [
@@ -275,6 +286,7 @@
               '-lcomctl32.lib',
               '-lcomdlg32.lib',
               '-lwininet.lib',
+              '-lwinmm.lib',
             ],
           },
           'dependencies': [
@@ -289,12 +301,28 @@
             'vendor/breakpad/breakpad.gyp:breakpad_sender',
           ],
         }],  # OS=="win"
-        ['OS=="mac"', {
+        ['OS=="mac" and mas_build==0', {
           'dependencies': [
             'vendor/crashpad/client/client.gyp:crashpad_client',
             'vendor/crashpad/handler/handler.gyp:crashpad_handler',
           ],
-        }],  # OS=="mac"
+          'link_settings': {
+            # Do not link with QTKit for mas build.
+            'libraries': [
+              '$(SDKROOT)/System/Library/Frameworks/QTKit.framework',
+            ],
+          },
+        }],  # OS=="mac" and mas_build==0
+        ['OS=="mac" and mas_build==1', {
+          'defines': [
+            'MAS_BUILD',
+          ],
+          'sources!': [
+            'atom/browser/auto_updater_mac.mm',
+            'atom/common/crash_reporter/crash_reporter_mac.h',
+            'atom/common/crash_reporter/crash_reporter_mac.mm',
+          ],
+        }],  # OS=="mac" and mas_build==1
         ['OS=="linux"', {
           'link_settings': {
             'ldflags': [
@@ -397,9 +425,6 @@
             'libraries': [
               '$(SDKROOT)/System/Library/Frameworks/Carbon.framework',
               '$(SDKROOT)/System/Library/Frameworks/QuartzCore.framework',
-              'external_binaries/Squirrel.framework',
-              'external_binaries/ReactiveCocoa.framework',
-              'external_binaries/Mantle.framework',
             ],
           },
           'mac_bundle': 1,
@@ -441,13 +466,6 @@
               'destination': '<(PRODUCT_DIR)/<(product_name) Framework.framework/Versions/A/Libraries',
               'files': [
                 '<@(copied_libraries)',
-                '<(libchromiumcontent_dir)/ffmpegsumo.so',
-              ],
-            },
-            {
-              'destination': '<(PRODUCT_DIR)/<(product_name) Framework.framework/Versions/A/Resources',
-              'files': [
-                '<(PRODUCT_DIR)/crashpad_handler',
               ],
             },
           ],
@@ -463,6 +481,16 @@
               ],
             },
             {
+              'postbuild_name': 'Fix path of ffmpeg',
+              'action': [
+                'install_name_tool',
+                '-change',
+                '@loader_path/libffmpeg.dylib',
+                '@rpath/libffmpeg.dylib',
+                '${BUILT_PRODUCTS_DIR}/<(product_name) Framework.framework/Versions/A/<(product_name) Framework',
+              ],
+            },
+            {
               'postbuild_name': 'Add symlinks for framework subdirectories',
               'action': [
                 'tools/mac/create-framework-subdir-symlinks.sh',
@@ -470,6 +498,25 @@
                 'Libraries',
               ],
             },
+          ],
+          'conditions': [
+            ['mas_build==0', {
+              'link_settings': {
+                'libraries': [
+                  'external_binaries/Squirrel.framework',
+                  'external_binaries/ReactiveCocoa.framework',
+                  'external_binaries/Mantle.framework',
+                ],
+              },
+              'copies': [
+                {
+                  'destination': '<(PRODUCT_DIR)/<(product_name) Framework.framework/Versions/A/Resources',
+                  'files': [
+                    '<(PRODUCT_DIR)/crashpad_handler',
+                  ],
+                },
+              ],
+            }],
           ],
         },  # target framework
         {
